@@ -1,0 +1,34 @@
+<launch>
+  <!--
+    最小联合仿真入口：
+    1) PX4-SITL + Gazebo Classic 空世界
+    2) myuam 模型（带 D435、可控机械臂）落在地面
+    3) 机械臂保持 home，等待 QGC 手动起飞
+    4) 起飞后可用 RViz / MoveIt 控制机械臂
+  -->
+  <arg name="use_rviz" default="true"/>
+  <arg name="model" default="myuam"/>
+  <!-- 与 PX4 sitl_gazebo-classic/worlds/myam_empty.world 一致（软接触，配合 myuam.sdf / 原 myam.sdf 臂参数） -->
+  <arg name="world" default="myam_empty"/>
+  <!-- 默认用 Gazebo 真值发布 map→base_link，RViz 机体高度与物理一致；若需 MAVROS 估计则设 false -->
+  <arg name="use_gazebo_truth_body_tf" default="true"/>
+
+  <include file="$(dirname)/arm_moveit.launch">
+    <arg name="use_rviz" value="$(arg use_rviz)"/>
+    <arg name="gazebo_model_name" value="$(arg model)"/>
+  </include>
+
+  <include file="$(dirname)/px4_gazebo.launch">
+    <arg name="model" value="$(arg model)"/>
+    <arg name="world" value="$(arg world)"/>
+  </include>
+
+  <!-- MAVROS map→base_link 与 Gazebo 真值二选一，避免两套 z 打架 -->
+  <include file="$(dirname)/mavros_bridge.launch">
+    <arg name="local_position_tf_send" value="$(eval arg('use_gazebo_truth_body_tf') == 'false')"/>
+  </include>
+
+  <include file="$(dirname)/gazebo_truth_body_tf.launch" if="$(arg use_gazebo_truth_body_tf)">
+    <arg name="model_name" value="$(arg model)"/>
+  </include>
+</launch>

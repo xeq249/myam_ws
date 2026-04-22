@@ -1,0 +1,11 @@
+# apriltag_ros 连续检测（与 librealsense Gazebo 彩色图配套）
+tag_family: tag36h11
+tag_threads: 2
+tag_decimate: 1.0
+tag_blur: 0.0
+tag_refine_edges: 1
+tag_debug: 0
+max_hamming_dist: 2
+publish_tf: false
+transport_hint: raw
+camera_frame: camera_color_optical_frame

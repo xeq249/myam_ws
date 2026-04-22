@@ -1,0 +1,23 @@
+<launch>
+  <!--
+    需已运行：MAVROS +（可选）PX4 SITL + apriltag_ros。
+    示例：先 roslaunch myam_simulation myam_sys_d435_px4_mavros_apriltag.launch
+    再本 launch；或本机仅 MAVROS + 仿真时 start_px4:=false 并已手动启动 SITL。
+  -->
+  <!-- 默认：绝对高度 3 m、边长 2 m。与脚本内默认值一致时，改 launch 参数即可覆盖（勿只改 .py 而忽略本文件） -->
+  <arg name="altitude_mode" default="absolute" doc="absolute=target_alt_m 为 local 绝对高度；relative=用 altitude_rel_m 相对起飞 z"/>
+  <arg name="target_alt_m" default="3.0" doc="altitude_mode=absolute 时的目标 z（米）"/>
+  <arg name="altitude_rel_m" default="2.0" doc="altitude_mode=relative 时在 z0 上加的爬升量（米）"/>
+  <arg name="square_side_m" default="2.0"/>
+  <arg name="tag_id" default="-1" doc="-1 表示任意 id"/>
+
+  <node pkg="myam_simulation" type="offboard_detect_apriltag.py" name="offboard_detect_apriltag" output="screen">
+    <param name="altitude_mode" value="$(arg altitude_mode)"/>
+    <param name="target_alt_m" value="$(arg target_alt_m)"/>
+    <param name="altitude_rel_m" value="$(arg altitude_rel_m)"/>
+    <param name="square_side_m" value="$(arg square_side_m)"/>
+    <param name="tag_id" value="$(arg tag_id)"/>
+    <param name="auto_arm" value="true"/>
+    <param name="auto_offboard" value="true"/>
+  </node>
+</launch>

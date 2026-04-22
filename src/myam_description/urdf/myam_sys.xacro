@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<robot name="myam_sys" xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <!-- true：Gazebo 中去掉夹爪 STL 碰撞，避免末端细网格先顶地穿模；抓取仿真可改 false -->
+  <xacro:arg name="minimal_gripper_collision" default="false"/>
+  <xacro:arg name="fixed_to_world" default="false"/>
+  <xacro:arg name="world_x" default="0.0"/>
+  <xacro:arg name="world_y" default="0.0"/>
+  <xacro:arg name="world_z" default="1.0"/>
+  <!-- arm_mount 在 base_link 下：更负的 z 表示沿机身 −Z 下移基座，减轻与机体网格穿插 -->
+  <xacro:property name="arm_mount_x" value="0.073168"/>
+  <xacro:property name="arm_mount_y" value="-0.0021131"/>
+  <xacro:property name="arm_mount_z" value="-0.2185"/>
+  <!-- Drone + payload (SolidWorks export), meshes: package://myam_description/meshes/ -->
+  <xacro:include filename="$(find myam_description)/urdf/myam_drone_body.xacro"/>
+  <xacro:myam_drone_body/>
+  <!-- 须在定义 base_link 之后再挂 world（fixed_in_air 调试） -->
+  <xacro:if value="$(arg fixed_to_world)">
+    <link name="world"/>
+    <joint name="world_to_base_link" type="fixed">
+      <origin xyz="$(arg world_x) $(arg world_y) $(arg world_z)" rpy="0 0 0"/>
+      <parent link="world"/>
+      <child link="base_link"/>
+    </joint>
+  </xacro:if>
+  <xacro:include filename="$(find myam_description)/xacro/realsense_d435.xacro"/>
+  <!-- 与原先 camera_joint 同位置；rpy：绕 Y 俯仰 +90°，使相机光轴由机头前向(+X) 转为朝向地面(−Z) -->
+  <xacro:realsense_d435 sensor_name="camera" parent_link="base_link" rate="30">
+    <origin xyz="0.155 -0.005 -0.158" rpy="0 1.5708 0"/>
+  </xacro:realsense_d435>
+  <!-- RoArm M3：关节名与 roarm_description 一致。xy 沿用原 arm_base_joint；z 用 arm_mount_z 微调避穿模。
+       roarm 为「底座 +Z 伸臂」，arm_mount_joint 绕父系 X 轴 roll=π 使臂朝下。 -->
+  <xacro:include filename="$(find myam_description)/urdf/roarm_m3_arm_mounted.xacro"/>
+  <xacro:roarm_m3_arm_mounted
+    parent_link="base_link"
+    mount_xyz="${arm_mount_x} ${arm_mount_y} ${arm_mount_z}"
+    mount_rpy="3.141592653589793 0 0.00022095"
+    minimal_gripper_collision="$(arg minimal_gripper_collision)"/>
+  <xacro:include filename="$(find myam_description)/urdf/myam_tail_battery_imu.xacro"/>
+  <xacro:myam_tail_battery_imu/>
+  <gazebo>
+    <plugin name="gazebo_ros_control" filename="libgazebo_ros_control.so"/>
+  </gazebo>
+</robot>

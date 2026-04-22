@@ -1,0 +1,28 @@
+# Gazebo + gazebo_ros_control：
+# - arm_controller：5 个臂关节（不含夹爪），便于 MoveIt 等只规划机械臂
+# - gripper_controller：夹爪单独开合，轨迹/action 与手臂解耦
+joint_state_controller:
+  type: joint_state_controller/JointStateController
+  publish_rate: 50
+
+arm_controller:
+  type: effort_controllers/JointTrajectoryController
+  joints:
+    - base_link_to_link1
+    - link1_to_link2
+    - link2_to_link3
+    - link3_to_link4
+    - link4_to_link5
+  gains:
+    base_link_to_link1: {p: 10, i: 0.0 , d: 0.1, i_clamp: 0.0}
+    link1_to_link2: {p: 10, i: 0.0 , d: 0.1, i_clamp: 0.0}
+    link2_to_link3: {p: 10, i: 0.0 , d: 0.1, i_clamp: 0.0}
+    link3_to_link4: {p: 8, i: 0.0 , d: 0.01, i_clamp: 0.0}
+    link4_to_link5: {p: 6, i: 0.0 , d: 0.006, i_clamp: 0.0}
+
+gripper_controller:
+  type: effort_controllers/JointTrajectoryController
+  joints:
+    - link5_to_gripper_link
+  gains:
+    link5_to_gripper_link: {p: 2, i: 0.0 , d: 0.002, i_clamp: 0.0}

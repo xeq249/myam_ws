@@ -1,0 +1,8 @@
+<launch>
+  <arg name="model" default="$(find myam_description)/urdf/myam_sys.xacro"/>
+  <param name="robot_description" command="xacro $(arg model)"/>
+  <node name="joint_state_publisher_gui" pkg="joint_state_publisher_gui" type="joint_state_publisher_gui"/>
+  <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher"/>
+  <!-- 必须加载含 RobotModel 的 rviz 配置；否则默认空白窗口只有 Grid，看不到模型 -->
+  <node name="rviz" pkg="rviz" type="rviz" args="-d $(find myam_description)/rviz/display_myam_sys.rviz" required="false"/>
+</launch>

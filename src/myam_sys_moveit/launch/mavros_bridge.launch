@@ -1,0 +1,29 @@
+<launch>
+  <arg name="use_sim_time" default="true"/>
+  <param name="/use_sim_time" value="$(arg use_sim_time)"/>
+
+  <arg name="fcu_url" default="udp://:14540@127.0.0.1:14557"/>
+  <arg name="gcs_url" default=""/>
+  <arg name="tgt_system" default="1"/>
+  <arg name="tgt_component" default="1"/>
+
+  <arg name="local_position_tf_send" default="true" doc="false 时改由 Gazebo link_states 发 map→base_link（见 gazebo_truth_body_tf.launch）"/>
+
+  <include file="$(find mavros)/launch/px4.launch">
+    <arg name="fcu_url" value="$(arg fcu_url)"/>
+    <arg name="gcs_url" value="$(arg gcs_url)"/>
+    <arg name="tgt_system" value="$(arg tgt_system)"/>
+    <arg name="tgt_component" value="$(arg tgt_component)"/>
+  </include>
+
+  <!--
+    px4_config.yaml 默认 local_position/tf/send=false，不发 map/base_link TF。
+    robot_state_publisher 仅发布 base_link 以下关节链 → base_link 无父坐标系，与世界系脱节；
+    MoveIt「规划坐标系 base_link」无法变换 map/odom 场景对象 → 笛卡尔路径 fraction≈0、探针 OMPL 超时。
+    True：由 MAVROS 广播 map→base_link（PX4 LOCAL_NED 估计）。
+    仿真若 z 与 Gazebo 不一致：local_position_tf_send:=false + gazebo_truth_body_tf。
+  -->
+  <group ns="mavros/local_position/tf">
+    <param name="send" type="bool" value="$(arg local_position_tf_send)"/>
+  </group>
+</launch>

@@ -1,0 +1,54 @@
+<launch>
+  <arg name="paused" default="true"/>
+  <arg name="use_sim_time" default="true"/>
+  <arg name="gui" default="true"/>
+  <arg name="headless" default="false"/>
+  <arg name="debug" default="false"/>
+  <arg name="verbose" default="false"/>
+  <!-- 加强 ODE，减轻落地穿模；见 worlds/myam_empty.world -->
+  <arg name="world_name" default="$(find myam_description)/worlds/myam_empty.world"/>
+  <!-- 从过高处下落时，触地(~sqrt(2h/g))往往早于 home 轨迹完成，臂未到位易末端先撞地穿模；不宜长期用 1m 做落体测试 -->
+  <arg name="spawn_z" default="0.85"/>
+  <!-- 尽快把关节拉到 home，缩短「下落中未到位」窗口 -->
+  <arg name="time_to_home" default="0.1"/>
+  <!-- true：去掉夹爪碰撞 mesh，末端不易顶穿地面；默认 false 使用 gripper_link STL 碰撞 -->
+  <arg name="minimal_gripper_collision" default="false"/>
+  <!-- 与 MoveIt / 常用 home 一致，避免零位下垂顶地 -->
+  <arg name="spawn_j1" default="0"/>
+  <arg name="spawn_j2" default="1.05"/>
+  <arg name="spawn_j3" default="1.57"/>
+  <arg name="spawn_j4" default="0"/>
+  <arg name="spawn_j5" default="0"/>
+  <arg name="spawn_jg" default="0"/>
+
+  <include file="$(find gazebo_ros)/launch/empty_world.launch">
+    <arg name="paused" value="$(arg paused)"/>
+    <arg name="use_sim_time" value="$(arg use_sim_time)"/>
+    <arg name="gui" value="$(arg gui)"/>
+    <arg name="headless" value="$(arg headless)"/>
+    <arg name="debug" value="$(arg debug)"/>
+    <arg name="verbose" value="$(arg verbose)"/>
+    <arg name="world_name" value="$(arg world_name)"/>
+  </include>
+
+  <param name="robot_description" command="xacro '$(find myam_description)/urdf/myam_sys.xacro' minimal_gripper_collision:=$(arg minimal_gripper_collision)"/>
+
+  <node name="spawn_myam" pkg="gazebo_ros" type="spawn_model" output="screen"
+        args="-urdf -param robot_description -model myam_sys -x 0 -y 0 -z $(arg spawn_z) -J base_link_to_link1 $(arg spawn_j1) -J link1_to_link2 $(arg spawn_j2) -J link2_to_link3 $(arg spawn_j3) -J link3_to_link4 $(arg spawn_j4) -J link4_to_link5 $(arg spawn_j5) -J link5_to_gripper_link $(arg spawn_jg)"/>
+
+  <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher">
+    <param name="use_sim_time" value="$(arg use_sim_time)"/>
+  </node>
+
+  <rosparam file="$(find myam_description)/config/gazebo_ros_control.yaml" command="load"/>
+  <node name="controller_spawner" pkg="controller_manager" type="spawner" respawn="false"
+        output="screen"
+        args="joint_state_controller arm_controller gripper_controller"/>
+  <!-- 轨迹锁定 home，与上方 spawn_j* 一致 -->
+  <node name="arm_gripper_hold_home" pkg="myam_description" type="arm_gripper_hold_home.py"
+        output="screen" required="false">
+    <param name="arm_positions" type="yaml" value="[$(arg spawn_j1), $(arg spawn_j2), $(arg spawn_j3), $(arg spawn_j4), $(arg spawn_j5)]"/>
+    <param name="gripper_position" value="$(arg spawn_jg)"/>
+    <param name="time_to_home" value="$(arg time_to_home)"/>
+  </node>
+</launch>

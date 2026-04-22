@@ -1,0 +1,236 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--This does not replace URDF, and is not an extension of URDF.
+    This is a format for representing semantic information about the robot structure.
+    A URDF file must exist for this robot as well, where the joints and the links that are referenced are defined
+-->
+<robot name="myam_sys">
+    <!--GROUPS: Representation of a set of joints and links. This can be useful for specifying DOF to plan for, defining arms, end effectors, etc-->
+    <!--LINKS: When a link is specified, the parent joint of that link (if it exists) is automatically included-->
+    <!--JOINTS: When a joint is specified, the child link of that joint (which will always exist) is automatically included-->
+    <!--CHAINS: When a chain is specified, all the links along the chain (including endpoints) are included in the group. Additionally, all the joints that are parents to included links are also included. This means that joints along the chain and the parent joint of the base link are included in the group-->
+    <!--SUBGROUPS: Groups can also be formed by referencing to already defined group names-->
+    <!-- tip 用 hand_tcp：交互 goal / IK 在 TCP，避免 link5 几何中心落在 link4_to_link5 轴上导致球在手腕处 -->
+    <group name="arm">
+        <chain base_link="roarm_base_link" tip_link="hand_tcp"/>
+    </group>
+    <group name="gripper">
+        <joint name="link5_to_gripper_link"/>
+    </group>
+    <!--GROUP STATES: Purpose: Define a named state for a particular group, in terms of joint values. This is useful to define states like 'folded arms'-->
+    <group_state name="home" group="arm">
+        <joint name="base_link_to_link1" value="0"/>
+        <joint name="link1_to_link2" value="1.05"/>
+        <joint name="link2_to_link3" value="1.57"/>
+        <joint name="link3_to_link4" value="0"/>
+        <joint name="link4_to_link5" value="0"/>
+    </group_state>
+    <group_state name="pregrasp" group="arm">
+        <joint name="base_link_to_link1" value="0"/>
+        <joint name="link1_to_link2" value="-1.57"/>
+        <joint name="link2_to_link3" value="2.95"/>
+        <joint name="link3_to_link4" value="0"/>
+        <joint name="link4_to_link5" value="0"/>
+    </group_state>
+    <group_state name="open" group="gripper">
+        <joint name="link5_to_gripper_link" value="1.5"/>
+    </group_state>
+    <group_state name="close" group="gripper">
+        <joint name="link5_to_gripper_link" value="0"/>
+    </group_state>
+    <!-- 旋翼由 PX4 驱动，不经 ros_control/MoveIt；声明为 passive 避免与 arm 组可控自由度混淆 -->
+    <passive_joint name="rotor_1_joint"/>
+    <passive_joint name="rotor_2_joint"/>
+    <passive_joint name="rotor_3_joint"/>
+    <passive_joint name="rotor_4_joint"/>
+    <passive_joint name="rotor_5_joint"/>
+    <passive_joint name="rotor_6_joint"/>
+    <!--END EFFECTOR: Purpose: Represent information about an end effector.-->
+    <!-- parent_link 与 arm 链 tip_link 对齐为 hand_tcp：RViz 交互球/末端标记在 TCP，而非 link5 几何中心 -->
+    <end_effector name="gripper" parent_link="hand_tcp" group="gripper" parent_group="arm"/>
+    <!--DISABLE COLLISIONS: By default it is assumed that any link of the robot could potentially come into collision with any other link in the robot. This tag disables collision checking between a specified pair of links. -->
+    <disable_collisions link1="base_link" link2="battery_link" reason="Adjacent"/>
+    <disable_collisions link1="base_link" link2="camera_link" reason="Adjacent"/>
+    <disable_collisions link1="base_link" link2="gps_link" reason="Adjacent"/>
+    <disable_collisions link1="base_link" link2="imu_link" reason="Adjacent"/>
+    <disable_collisions link1="base_link" link2="landing_gear_1_link" reason="Adjacent"/>
+    <disable_collisions link1="base_link" link2="landing_gear_2_link" reason="Adjacent"/>
+    <disable_collisions link1="base_link" link2="link1" reason="Never"/>
+    <disable_collisions link1="base_link" link2="link2" reason="Never"/>
+    <!-- 仿真伸臂下探时易与机身壳体误判碰撞，放宽以提高可达（实机按需删） -->
+    <disable_collisions link1="base_link" link2="link3" reason="Never"/>
+    <disable_collisions link1="base_link" link2="link4" reason="Never"/>
+    <disable_collisions link1="base_link" link2="link5" reason="Never"/>
+    <disable_collisions link1="base_link" link2="gripper_link" reason="Never"/>
+    <disable_collisions link1="base_link" link2="roarm_base_link" reason="Adjacent"/>
+    <disable_collisions link1="base_link" link2="rotor_1_link" reason="Adjacent"/>
+    <disable_collisions link1="base_link" link2="rotor_2_link" reason="Adjacent"/>
+    <disable_collisions link1="base_link" link2="rotor_3_link" reason="Adjacent"/>
+    <disable_collisions link1="base_link" link2="rotor_4_link" reason="Adjacent"/>
+    <disable_collisions link1="base_link" link2="rotor_5_link" reason="Adjacent"/>
+    <disable_collisions link1="base_link" link2="rotor_6_link" reason="Adjacent"/>
+    <disable_collisions link1="battery_link" link2="camera_link" reason="Never"/>
+    <disable_collisions link1="battery_link" link2="gps_link" reason="Never"/>
+    <disable_collisions link1="battery_link" link2="imu_link" reason="Never"/>
+    <disable_collisions link1="battery_link" link2="landing_gear_1_link" reason="Never"/>
+    <disable_collisions link1="battery_link" link2="landing_gear_2_link" reason="Never"/>
+    <disable_collisions link1="battery_link" link2="link1" reason="Never"/>
+    <disable_collisions link1="battery_link" link2="link2" reason="Never"/>
+    <disable_collisions link1="battery_link" link2="link3" reason="Never"/>
+    <disable_collisions link1="battery_link" link2="link4" reason="Never"/>
+    <disable_collisions link1="battery_link" link2="roarm_base_link" reason="Never"/>
+    <disable_collisions link1="battery_link" link2="rotor_1_link" reason="Never"/>
+    <disable_collisions link1="battery_link" link2="rotor_2_link" reason="Never"/>
+    <disable_collisions link1="battery_link" link2="rotor_3_link" reason="Never"/>
+    <disable_collisions link1="battery_link" link2="rotor_4_link" reason="Never"/>
+    <disable_collisions link1="battery_link" link2="rotor_5_link" reason="Never"/>
+    <disable_collisions link1="battery_link" link2="rotor_6_link" reason="Never"/>
+    <disable_collisions link1="camera_link" link2="gps_link" reason="Never"/>
+    <disable_collisions link1="camera_link" link2="imu_link" reason="Never"/>
+    <disable_collisions link1="camera_link" link2="landing_gear_1_link" reason="Never"/>
+    <disable_collisions link1="camera_link" link2="landing_gear_2_link" reason="Never"/>
+    <disable_collisions link1="camera_link" link2="link1" reason="Never"/>
+    <disable_collisions link1="camera_link" link2="link2" reason="Never"/>
+    <!-- RealSense 包络与中段连杆下探路径重叠时常判 goal in collision -->
+    <disable_collisions link1="camera_link" link2="link3" reason="Never"/>
+    <disable_collisions link1="camera_link" link2="link4" reason="Never"/>
+    <disable_collisions link1="camera_link" link2="roarm_base_link" reason="Never"/>
+    <disable_collisions link1="camera_link" link2="rotor_1_link" reason="Never"/>
+    <disable_collisions link1="camera_link" link2="rotor_2_link" reason="Never"/>
+    <disable_collisions link1="camera_link" link2="rotor_3_link" reason="Never"/>
+    <disable_collisions link1="camera_link" link2="rotor_4_link" reason="Never"/>
+    <disable_collisions link1="camera_link" link2="rotor_5_link" reason="Never"/>
+    <disable_collisions link1="camera_link" link2="rotor_6_link" reason="Never"/>
+    <disable_collisions link1="gps_link" link2="gripper_link" reason="Never"/>
+    <disable_collisions link1="gps_link" link2="imu_link" reason="Never"/>
+    <disable_collisions link1="gps_link" link2="landing_gear_1_link" reason="Never"/>
+    <disable_collisions link1="gps_link" link2="landing_gear_2_link" reason="Never"/>
+    <disable_collisions link1="gps_link" link2="link1" reason="Never"/>
+    <disable_collisions link1="gps_link" link2="link2" reason="Never"/>
+    <disable_collisions link1="gps_link" link2="link3" reason="Never"/>
+    <disable_collisions link1="gps_link" link2="link4" reason="Never"/>
+    <disable_collisions link1="gps_link" link2="link5" reason="Never"/>
+    <disable_collisions link1="gps_link" link2="roarm_base_link" reason="Never"/>
+    <disable_collisions link1="gps_link" link2="rotor_1_link" reason="Never"/>
+    <disable_collisions link1="gps_link" link2="rotor_2_link" reason="Never"/>
+    <disable_collisions link1="gps_link" link2="rotor_3_link" reason="Never"/>
+    <disable_collisions link1="gps_link" link2="rotor_4_link" reason="Never"/>
+    <disable_collisions link1="gps_link" link2="rotor_5_link" reason="Never"/>
+    <disable_collisions link1="gps_link" link2="rotor_6_link" reason="Never"/>
+    <disable_collisions link1="gripper_link" link2="link3" reason="Never"/>
+    <disable_collisions link1="gripper_link" link2="link4" reason="Never"/>
+    <disable_collisions link1="gripper_link" link2="link5" reason="Adjacent"/>
+    <disable_collisions link1="gripper_link" link2="rotor_3_link" reason="Never"/>
+    <disable_collisions link1="gripper_link" link2="rotor_4_link" reason="Never"/>
+    <disable_collisions link1="gripper_link" link2="rotor_5_link" reason="Never"/>
+    <disable_collisions link1="gripper_link" link2="rotor_6_link" reason="Never"/>
+    <!-- 收起姿态：夹爪/末节与相机、电池、起落架、机身臂座网格易重叠；未禁用则 RViz 夹爪常显紫色（误判碰撞） -->
+    <disable_collisions link1="battery_link" link2="gripper_link" reason="Never"/>
+    <disable_collisions link1="battery_link" link2="link5" reason="Never"/>
+    <disable_collisions link1="camera_link" link2="gripper_link" reason="Never"/>
+    <disable_collisions link1="camera_link" link2="link5" reason="Never"/>
+    <disable_collisions link1="gripper_link" link2="imu_link" reason="Never"/>
+    <disable_collisions link1="gripper_link" link2="link1" reason="Never"/>
+    <disable_collisions link1="gripper_link" link2="link2" reason="Never"/>
+    <disable_collisions link1="gripper_link" link2="roarm_base_link" reason="Never"/>
+    <disable_collisions link1="gripper_link" link2="rotor_1_link" reason="Never"/>
+    <disable_collisions link1="gripper_link" link2="rotor_2_link" reason="Never"/>
+    <disable_collisions link1="link5" link2="rotor_1_link" reason="Never"/>
+    <disable_collisions link1="link5" link2="rotor_2_link" reason="Never"/>
+    <disable_collisions link1="link5" link2="rotor_5_link" reason="Never"/>
+    <disable_collisions link1="imu_link" link2="landing_gear_1_link" reason="Never"/>
+    <disable_collisions link1="imu_link" link2="landing_gear_2_link" reason="Never"/>
+    <disable_collisions link1="imu_link" link2="link1" reason="Never"/>
+    <disable_collisions link1="imu_link" link2="link2" reason="Never"/>
+    <disable_collisions link1="imu_link" link2="link3" reason="Never"/>
+    <disable_collisions link1="imu_link" link2="link4" reason="Never"/>
+    <disable_collisions link1="imu_link" link2="link5" reason="Never"/>
+    <disable_collisions link1="imu_link" link2="roarm_base_link" reason="Never"/>
+    <disable_collisions link1="imu_link" link2="rotor_1_link" reason="Never"/>
+    <disable_collisions link1="imu_link" link2="rotor_2_link" reason="Never"/>
+    <disable_collisions link1="imu_link" link2="rotor_3_link" reason="Never"/>
+    <disable_collisions link1="imu_link" link2="rotor_4_link" reason="Never"/>
+    <disable_collisions link1="imu_link" link2="rotor_5_link" reason="Never"/>
+    <disable_collisions link1="imu_link" link2="rotor_6_link" reason="Never"/>
+    <disable_collisions link1="landing_gear_1_link" link2="landing_gear_2_link" reason="Never"/>
+    <!-- 起落架需要参与机械臂避障；保留与机体/旋翼的禁用项，但恢复与 arm/gripper 的碰撞检查 -->
+    <disable_collisions link1="landing_gear_1_link" link2="roarm_base_link" reason="Never"/>
+    <disable_collisions link1="landing_gear_1_link" link2="rotor_1_link" reason="Never"/>
+    <disable_collisions link1="landing_gear_1_link" link2="rotor_2_link" reason="Never"/>
+    <disable_collisions link1="landing_gear_1_link" link2="rotor_3_link" reason="Never"/>
+    <disable_collisions link1="landing_gear_1_link" link2="rotor_4_link" reason="Never"/>
+    <disable_collisions link1="landing_gear_1_link" link2="rotor_5_link" reason="Never"/>
+    <disable_collisions link1="landing_gear_1_link" link2="rotor_6_link" reason="Never"/>
+    <disable_collisions link1="landing_gear_2_link" link2="roarm_base_link" reason="Never"/>
+    <disable_collisions link1="landing_gear_2_link" link2="rotor_1_link" reason="Never"/>
+    <disable_collisions link1="landing_gear_2_link" link2="rotor_2_link" reason="Never"/>
+    <disable_collisions link1="landing_gear_2_link" link2="rotor_3_link" reason="Never"/>
+    <disable_collisions link1="landing_gear_2_link" link2="rotor_4_link" reason="Never"/>
+    <disable_collisions link1="landing_gear_2_link" link2="rotor_5_link" reason="Never"/>
+    <disable_collisions link1="landing_gear_2_link" link2="rotor_6_link" reason="Never"/>
+    <disable_collisions link1="link1" link2="link2" reason="Adjacent"/>
+    <disable_collisions link1="link1" link2="link3" reason="Never"/>
+    <disable_collisions link1="link1" link2="link4" reason="Never"/>
+    <!-- 下探构型下手腕回折时 link1 与末端外包络常见误判自碰 -->
+    <disable_collisions link1="link1" link2="link5" reason="Never"/>
+    <disable_collisions link1="link1" link2="roarm_base_link" reason="Adjacent"/>
+    <disable_collisions link1="link1" link2="rotor_1_link" reason="Never"/>
+    <disable_collisions link1="link1" link2="rotor_2_link" reason="Never"/>
+    <disable_collisions link1="link1" link2="rotor_3_link" reason="Never"/>
+    <disable_collisions link1="link1" link2="rotor_4_link" reason="Never"/>
+    <disable_collisions link1="link1" link2="rotor_5_link" reason="Never"/>
+    <disable_collisions link1="link1" link2="rotor_6_link" reason="Never"/>
+    <disable_collisions link1="link2" link2="link3" reason="Adjacent"/>
+    <!-- 肘深弯采 IK 时 link2 与 link4 / link5 外包络易误判自碰 -->
+    <disable_collisions link1="link2" link2="link4" reason="Never"/>
+    <disable_collisions link1="link2" link2="link5" reason="Never"/>
+    <disable_collisions link1="link2" link2="roarm_base_link" reason="Never"/>
+    <disable_collisions link1="link2" link2="rotor_1_link" reason="Never"/>
+    <disable_collisions link1="link2" link2="rotor_2_link" reason="Never"/>
+    <disable_collisions link1="link2" link2="rotor_3_link" reason="Never"/>
+    <disable_collisions link1="link2" link2="rotor_4_link" reason="Never"/>
+    <disable_collisions link1="link2" link2="rotor_5_link" reason="Never"/>
+    <disable_collisions link1="link2" link2="rotor_6_link" reason="Never"/>
+    <disable_collisions link1="link3" link2="link4" reason="Adjacent"/>
+    <disable_collisions link1="link3" link2="link5" reason="Never"/>
+    <disable_collisions link1="link3" link2="roarm_base_link" reason="Never"/>
+    <!-- link4/link5 与臂座网格在伸直下探时极易重叠 → goal 采样全判碰撞 -->
+    <disable_collisions link1="link4" link2="roarm_base_link" reason="Never"/>
+    <disable_collisions link1="link5" link2="roarm_base_link" reason="Never"/>
+    <disable_collisions link1="link3" link2="rotor_1_link" reason="Never"/>
+    <disable_collisions link1="link3" link2="rotor_2_link" reason="Never"/>
+    <disable_collisions link1="link3" link2="rotor_3_link" reason="Never"/>
+    <disable_collisions link1="link3" link2="rotor_4_link" reason="Never"/>
+    <disable_collisions link1="link3" link2="rotor_5_link" reason="Never"/>
+    <disable_collisions link1="link3" link2="rotor_6_link" reason="Never"/>
+    <disable_collisions link1="link4" link2="link5" reason="Adjacent"/>
+    <disable_collisions link1="link4" link2="rotor_1_link" reason="Never"/>
+    <disable_collisions link1="link4" link2="rotor_2_link" reason="Never"/>
+    <disable_collisions link1="link4" link2="rotor_3_link" reason="Never"/>
+    <disable_collisions link1="link4" link2="rotor_4_link" reason="Never"/>
+    <disable_collisions link1="link4" link2="rotor_5_link" reason="Never"/>
+    <disable_collisions link1="link4" link2="rotor_6_link" reason="Never"/>
+    <disable_collisions link1="link5" link2="rotor_3_link" reason="Never"/>
+    <disable_collisions link1="link5" link2="rotor_4_link" reason="Never"/>
+    <disable_collisions link1="link5" link2="rotor_6_link" reason="Never"/>
+    <disable_collisions link1="roarm_base_link" link2="rotor_1_link" reason="Never"/>
+    <disable_collisions link1="roarm_base_link" link2="rotor_2_link" reason="Never"/>
+    <disable_collisions link1="roarm_base_link" link2="rotor_3_link" reason="Never"/>
+    <disable_collisions link1="roarm_base_link" link2="rotor_4_link" reason="Never"/>
+    <disable_collisions link1="roarm_base_link" link2="rotor_5_link" reason="Never"/>
+    <disable_collisions link1="roarm_base_link" link2="rotor_6_link" reason="Never"/>
+    <disable_collisions link1="rotor_1_link" link2="rotor_2_link" reason="Never"/>
+    <disable_collisions link1="rotor_1_link" link2="rotor_3_link" reason="Never"/>
+    <disable_collisions link1="rotor_1_link" link2="rotor_4_link" reason="Never"/>
+    <disable_collisions link1="rotor_1_link" link2="rotor_5_link" reason="Never"/>
+    <disable_collisions link1="rotor_1_link" link2="rotor_6_link" reason="Never"/>
+    <disable_collisions link1="rotor_2_link" link2="rotor_3_link" reason="Never"/>
+    <disable_collisions link1="rotor_2_link" link2="rotor_4_link" reason="Never"/>
+    <disable_collisions link1="rotor_2_link" link2="rotor_5_link" reason="Never"/>
+    <disable_collisions link1="rotor_2_link" link2="rotor_6_link" reason="Never"/>
+    <disable_collisions link1="rotor_3_link" link2="rotor_4_link" reason="Never"/>
+    <disable_collisions link1="rotor_3_link" link2="rotor_5_link" reason="Never"/>
+    <disable_collisions link1="rotor_3_link" link2="rotor_6_link" reason="Never"/>
+    <disable_collisions link1="rotor_4_link" link2="rotor_5_link" reason="Never"/>
+    <disable_collisions link1="rotor_4_link" link2="rotor_6_link" reason="Never"/>
+    <disable_collisions link1="rotor_5_link" link2="rotor_6_link" reason="Never"/>
+</robot>

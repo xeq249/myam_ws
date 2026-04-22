@@ -1,0 +1,29 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>myam_simulation</name>
+  <version>0.1.0</version>
+  <description>
+    PX4 SITL（myam_sys_d435）+ MAVROS + Gazebo 仿真 D435 相机 + AprilTag 识别 启动。
+  </description>
+  <maintainer email="xeq249@mail.com">J.C</maintainer>
+  <license>BSD</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <exec_depend>rospy</exec_depend>
+  <exec_depend>roslaunch</exec_depend>
+  <exec_depend>myam_sys_moveit</exec_depend>
+  <exec_depend>mavros</exec_depend>
+  <exec_depend>apriltag_ros</exec_depend>
+  <exec_depend>mavros_msgs</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>cv_bridge</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>tf</exec_depend>
+  <exec_depend>tf2_ros</exec_depend>
+  <exec_depend>tf2_geometry_msgs</exec_depend>
+  <exec_depend>moveit_commander</exec_depend>
+  <exec_depend>dynamic_reconfigure</exec_depend>
+  <exec_depend>moveit_msgs</exec_depend>
+  <exec_depend>gazebo_msgs</exec_depend>
+</package>

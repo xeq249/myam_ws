@@ -1,0 +1,61 @@
+<?xml version="1.0"?>
+<launch>
+  <!--
+    Gazebo：无人机经 world->virtual_base 固定在高度 fixed_world_z（默认 0.5 m），机体不坠落。
+    地面红色小方块：默认 world 下 (cube_x,cube_y,cube_z)，边长 5 cm（见 models/red_grasp_cube）。
+    MoveIt + RViz：默认启动 red_grasp_cube_rviz_sync，把同位姿盒子 + 薄地面加入 Planning Scene（RViz 可见）。
+    关闭同步：sync_red_box_to_rviz:=false；关闭地面：add_planning_scene_ground:=false；若改 cube_*，同步节点会自动用同一组参数。
+  -->
+  <arg name="pipeline" default="ompl" doc="MoveIt planning pipeline"/>
+
+  <arg name="gazebo_gui" default="true" doc="Gazebo GUI"/>
+  <arg name="paused" default="false" doc="Start Gazebo paused"/>
+  <arg name="world_name" default="$(find myam_description)/worlds/myam_empty.world" doc="Ground plane world"/>
+
+  <!-- 机体锚点高度：virtual_base（与 base_link 重合）距地约 fixed_world_z（spawn_z=0 时） -->
+  <arg name="spawn_z" default="0.0" doc="Gazebo spawn z for robot root link `world`"/>
+  <arg name="fixed_world_z" default="0.7" doc="world->virtual_base 的 z，使无人机固定在离地约此高度"/>
+
+  <!-- 红色方块在世界系中的位置：前方 = +X，半高贴地 -->
+  <arg name="cube_x" default="0.25" doc="Cube center x (m), forward from drone at origin"/>
+  <arg name="cube_y" default="0.1" doc="Cube center y (m)"/>
+  <arg name="cube_z" default="0.025" doc="Cube center z (m); 5 cm box half-height on ground"/>
+
+  <arg name="start_moveit" default="true" doc="Launch MoveIt + RViz"/>
+  <!-- 将 Gazebo 中同位置红块加入 Planning Scene，RViz 中可显示并参与碰撞（与下面 cube_* 一致） -->
+  <arg name="sync_red_box_to_rviz" default="true" doc="启动 red_grasp_cube_rviz_sync.py"/>
+  <!-- 薄地面默认「方块附近局部板」，勿盲目加大 ground_size（易挡下探 → Unable to sample goal） -->
+  <arg name="add_planning_scene_ground" default="true" doc="传给 red_grasp_cube_rviz_sync ~add_ground_plane"/>
+
+  <!-- Gazebo + 固定空中无人机 + 机械臂控制器 -->
+  <include file="$(dirname)/gazebo.launch">
+    <arg name="gazebo_gui" value="$(arg gazebo_gui)"/>
+    <arg name="paused" value="$(arg paused)"/>
+    <arg name="world_name" value="$(arg world_name)"/>
+    <arg name="fixed_in_air" value="true"/>
+    <arg name="spawn_z" value="$(arg spawn_z)"/>
+    <arg name="fixed_world_z" value="$(arg fixed_world_z)"/>
+  </include>
+
+  <!-- 红色抓取方块（SDF） -->
+  <node name="spawn_red_grasp_cube" pkg="gazebo_ros" type="spawn_model" output="screen"
+        args="-file $(find myam_sys_moveit)/models/red_grasp_cube/model.sdf -sdf -model red_grasp_cube -x $(arg cube_x) -y $(arg cube_y) -z $(arg cube_z)"/>
+
+  <!-- world 坐标与 spawn 一致；RViz Fixed Frame 选 world，勾 Scene Geometry -->
+  <node pkg="myam_sys_moveit" type="red_grasp_cube_rviz_sync.py" name="red_grasp_cube_rviz_sync" output="screen"
+        if="$(arg sync_red_box_to_rviz)">
+    <param name="scene_frame" value="world"/>
+    <param name="collision_object_id" value="red_grasp_cube"/>
+    <param name="add_ground_plane" value="$(arg add_planning_scene_ground)"/>
+    <rosparam param="position" subst_value="true">[$(arg cube_x), $(arg cube_y), $(arg cube_z)]</rosparam>
+    <rosparam param="size">[0.05, 0.05, 0.05]</rosparam>
+  </node>
+
+  <!-- MoveIt：使用 Gazebo 发布的 joint_states 与 ros_control 轨迹执行 -->
+  <include file="$(dirname)/demo.launch" if="$(arg start_moveit)">
+    <arg name="pipeline" value="$(arg pipeline)"/>
+    <arg name="load_robot_description" value="false"/>
+    <arg name="moveit_controller_manager" value="ros_control"/>
+    <arg name="joint_states_topic" value="/joint_states_merged"/>
+  </include>
+</launch>

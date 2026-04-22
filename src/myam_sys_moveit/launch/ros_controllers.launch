@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<launch>
+  <!--
+    Gazebo startup path:
+    - controller parameters must come from config/gazebo_controllers.yaml
+    - this launch file only spawns already-configured controllers
+    Keeping ros_controllers.yaml load here would overwrite Gazebo PID gains.
+    This was the root cause of "same YAML works once, reopening terminal fails":
+    the later ros_controllers.yaml load restored p=100,d=1,i=1.
+  -->
+  <node name="controller_spawner" pkg="controller_manager" type="spawner" respawn="false"
+    output="screen" args="arm_controller gripper_controller "/>
+
+</launch>

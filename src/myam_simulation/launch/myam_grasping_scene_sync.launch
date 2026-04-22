@@ -1,0 +1,30 @@
+<?xml version="1.0"?>
+<!--
+  与 Tools/.../worlds/myam_grasping.world 中 grasp_table + grasp_target_cube 位姿一致（Gazebo 世界系）：
+  在 map 下发布 static TF 并向 MoveIt 规划场景添加两个 box，使 RViz MotionPlanning 中可见台子与蓝块。
+
+  使用：在已运行 sitl_task / move_group 后，另开终端
+    roslaunch myam_simulation myam_grasping_scene_sync.launch
+
+  RViz：Global Options → Fixed Frame 选 **map**；勾上 MotionPlanning → Planning Request → Scene Geometry
+        （或保持默认，台/块在规划场景里以灰/橙块显示）
+-->
+<launch>
+  <arg name="scene_frame" default="map"/>
+  <arg name="startup_sleep" default="3.0"/>
+  <!-- 与 myam_grasping.world 中 <pose> 与 <size> 一致：台子中心 z=0.10 高 0.20 → 顶面 0.20；蓝块中心 0.222 -->
+  <node pkg="myam_simulation" type="grasp_blue_cube_rviz_sync.py" name="myam_grasping_scene_sync" output="screen">
+    <param name="scene_frame" value="$(arg scene_frame)"/>
+    <param name="startup_sleep" value="$(arg startup_sleep)"/>
+    <rosparam param="objects">
+- id: grasp_table
+  tf_frame: grasp_table_center
+  position: [2.98, 1.18, 0.10]
+  size: [0.40, 0.40, 0.20]
+- id: grasp_target_cube
+  tf_frame: grasp_target_cube_center
+  position: [2.98, 1.18, 0.222]
+  size: [0.04, 0.04, 0.04]
+    </rosparam>
+  </node>
+</launch>

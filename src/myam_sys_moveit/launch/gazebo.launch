@@ -1,0 +1,79 @@
+<?xml version="1.0"?>
+<launch>
+  <!-- Gazebo options -->
+  <arg name="gazebo_gui" default="true" doc="Start Gazebo GUI"/>
+  <!-- 默认暂停：控制器就绪后发 home 保持，再在 GUI 中解暂停以测试下落是否发散 -->
+  <arg name="paused" default="false" doc="Start Gazebo paused"/>
+  <!-- 加强 ODE 接触，减轻卡地（与 myam_description 单机一致） -->
+  <arg name="world_name" default="$(find myam_description)/worlds/myam_empty.world" doc="Gazebo world file"/>
+  <!-- 略抬高：减少生成瞬间臂已穿入地面 -->
+  <arg name="spawn_z" default="1.0" doc="Spawn height (m) above ground when not fixed_in_air"/>
+  <arg name="world_pose" default="-x 0 -y 0 -z $(arg spawn_z) -R 0 -P 0 -Y 0" doc="Pose to spawn the robot at"/>
+  <!-- 默认 false：机体受重力，用于测试解暂停后落至地面是否发散；空中调臂可传 fixed_in_air:=true -->
+  <arg name="fixed_in_air" default="true" doc="Anchor robot to world (no free fall)"/>
+  <arg name="fixed_world_z" default="1.0" doc="Anchor height when fixed_in_air is true"/>
+  <!-- 与 config/myam_sys.srdf group_state name=&quot;home&quot; 一致 -->
+  <arg name="initial_joint_positions" default=" -J base_link_to_link1 0 -J link1_to_link2 1.05 -J link2_to_link3 1.57 -J link3_to_link4 0 -J link4_to_link5 0 -J link5_to_gripper_link 0" doc="Initial joint configuration of the robot"/>
+
+  <include file="$(find gazebo_ros)/launch/empty_world.launch">
+    <arg name="paused" value="$(arg paused)"/>
+    <arg name="gui" value="$(arg gazebo_gui)"/>
+    <arg name="world_name" value="$(arg world_name)"/>
+  </include>
+
+  <!-- fixed_in_air:=true 时 xacro 增加 world->virtual_base，机体悬停于 fixed_world_z 便于先调臂 -->
+  <!-- minimal_gripper_collision:=true 时去掉夹爪 STL 碰撞以减轻细网格卡地；默认 false，保留夹爪碰撞便于抓物/接触 -->
+  <arg name="minimal_gripper_collision" default="false" doc="Strip gripper collision mesh in Gazebo when true"/>
+  <param
+    name="robot_description"
+    command="xacro '$(find myam_description)/urdf/myam_sys.xacro' fixed_to_world:=$(arg fixed_in_air) world_x:=0.0 world_y:=0.0 world_z:=$(arg fixed_world_z) minimal_gripper_collision:=$(arg minimal_gripper_collision)"/>
+
+  <!-- Spawn the robot in Gazebo -->
+  <node name="spawn_gazebo_model" pkg="gazebo_ros" type="spawn_model" args="-urdf -param robot_description -model myam_sys $(arg world_pose) $(arg initial_joint_positions)"
+    respawn="false" output="screen" />
+
+  <!--
+    关键记录:
+    Gazebo 调参时只能在这里加载 config/gazebo_controllers.yaml。
+    之前 ros_controllers.launch 里再次 load config/ros_controllers.yaml，
+    会把 arm_controller / gripper_controller 的 PID 覆盖回 MoveIt 默认值
+    (典型表现: 启动 SUMMARY 中又出现 p=100,d=1,i=1，解暂停后机械臂发散)。
+    修复后 Gazebo 只吃 gazebo_controllers.yaml，机械臂可在 Gazebo 中维持 home 姿态。
+  -->
+  <!-- 用相对 launch 的路径，避免 $(find) 解析到 devel/share 里过期的 config 副本 -->
+  <rosparam file="$(dirname)/../config/gazebo_controllers.yaml" />
+  <include file="$(dirname)/ros_controllers.launch"/>
+
+  <!-- Spawn the Gazebo ROS controllers -->
+  <node name="gazebo_controller_spawner" pkg="controller_manager" type="spawner" respawn="false" output="screen" args="joint_state_controller" />
+
+  <!-- 控制器就绪后发布 home 保持（与 SRDF home 一致）；默认不自动 unpause，便于在 GUI 中手动解暂停测下落 -->
+  <node name="send_arm_hold_traj" pkg="myam_sys_moveit" type="send_arm_hold_traj.py" output="screen">
+    <param name="wait_after_start" value="2.0"/>
+    <param name="move_duration" value="6.0"/>
+    <param name="unpause_gazebo" value="false"/>
+    <param name="gazebo_model_name" value="myam_sys"/>
+    <param name="urdf_param_name" value="robot_description"/>
+    <param name="pre_unpause_hold_seconds" value="2.0"/>
+    <param name="hold_rate_hz_while_paused" value="100.0"/>
+    <!-- 0：解暂停后不再刷屏 home，仅保留 JTC 已接收的保持目标，减轻与地面对顶 -->
+    <param name="hold_republish_seconds" value="1.0"/>
+    <param name="hold_publish_rate_hz" value="4.0"/>
+    <rosparam param="hold_positions">[0.0, 1.05, 1.57, 0.0, 0.0]</rosparam>
+    <rosparam param="hold_gripper_positions">[0.0]</rosparam>
+  </node>
+
+  <!--
+    ros_control 只发布臂+夹爪关节；URDF 含旋翼关节，MoveIt 需要完整 joint_states 才会发布
+    get_planning_scene 并接受规划。merge 节点补全 rotor_*_joint（缺省为 0）。
+  -->
+  <node name="merge_arm_rotor_joint_states" pkg="myam_sys_moveit" type="merge_arm_rotor_joint_states.py" output="screen">
+    <param name="source_topic" value="/joint_states"/>
+    <param name="output_topic" value="/joint_states_merged"/>
+  </node>
+
+  <!-- Given the published joint states, publish tf for the robot links -->
+  <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher" respawn="true" output="screen">
+    <remap from="joint_states" to="/joint_states_merged"/>
+  </node>
+</launch>

@@ -1,0 +1,47 @@
+# =============================================================================
+# 基线（塌臂、尽量不卡地）→ 再往高调
+#
+# 思路：effort JTC 的 τ ≈ P·e + D·ė，P 过大时与地面对顶易卡。基线用极小 P，
+# 臂会在重力下离 home（塌），但不易与接触死磕。确认不卡地后，按下面顺序小幅增加：
+#
+#   1) 每关节 P +20%～30%，观察仍不卡再重复（优先从肩到腕：base…→link4→link5）
+#   2) 若开始抖：该关节 D +0.02～0.04，或给 URDF 该关节 damping +0.03（勿一次全关节加）
+#   3) 若又卡地：先回退该关节 P，或略降 link3～gripper 的 mu（见 roarm_m3_arm_mounted.xacro）
+#
+# 夹爪 P 单独更小，避免末端顶地时力矩过大。
+# =============================================================================
+
+joint_state_controller:
+  type: joint_state_controller/JointStateController
+  publish_rate: 100
+
+arm_controller:
+  type: effort_controllers/JointTrajectoryController
+  joints:
+    - base_link_to_link1
+    - link1_to_link2
+    - link2_to_link3
+    - link3_to_link4
+    - link4_to_link5
+  constraints:
+    goal_time: 8.0
+    stopped_velocity_tolerance: 0.35
+    base_link_to_link1: {trajectory: 0.4, goal: 0.15}
+    link1_to_link2: {trajectory: 0.4, goal: 0.15}
+    link2_to_link3: {trajectory: 0.4, goal: 0.15}
+    link3_to_link4: {trajectory: 0.45, goal: 0.18}
+    link4_to_link5: {trajectory: 0.45, goal: 0.18}
+  gains:
+    # —— 基线（塌臂、弱抗重力）——
+    base_link_to_link1: {p: 0.42, i: 0.0, d: 0.012, i_clamp: 0.0}
+    link1_to_link2: {p: 0.48, i: 0.0, d: 0.014, i_clamp: 0.0}
+    link2_to_link3: {p: 0.40, i: 0.0, d: 0.012, i_clamp: 0.0}
+    link3_to_link4: {p: 0.28, i: 0.0, d: 0.010, i_clamp: 0.0}
+    link4_to_link5: {p: 0.06, i: 0.0, d: 0.008, i_clamp: 0.0}
+
+gripper_controller:
+  type: effort_controllers/JointTrajectoryController
+  joints:
+    - link5_to_gripper_link
+  gains:
+    link5_to_gripper_link: {p: 0.06, i: 0.0, d: 0.006, i_clamp: 0.0}

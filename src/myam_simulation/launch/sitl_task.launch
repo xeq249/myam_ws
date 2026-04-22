@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+<launch>
+  <!--
+    与 sitl_moveit.launch 同栈：PX4 SITL + Gazebo + myuam + MoveIt + MAVROS；
+    **默认不启 RViz**（减轻负载）；需要可视化时：roslaunch myam_simulation sitl_task.launch use_rviz:=true
+    抓取场景世界：myam_grasping.world。
+    - 规划场景里显示台面/方块碰撞体：另开终端
+      roslaunch myam_simulation myam_grasping_scene_sync.launch
+    - 前方地面蓝块：sitl_grasp_blue_ground.launch（world=myam_grasping_front）
+    排查规划：开 RViz 后看 Planned Path；对比 TF：`rosrun tf tf_echo roarm_base_link hand_tcp`
+  -->
+  <arg name="use_rviz" default="false"/>
+  <arg name="model" default="myuam"/>
+  <arg name="world" default="myam_grasping"/>
+
+  <include file="$(find myam_sys_moveit)/launch/sitl_ground_arm.launch">
+    <arg name="use_rviz" value="$(arg use_rviz)"/>
+    <arg name="model" value="$(arg model)"/>
+    <arg name="world" value="$(arg world)"/>
+  </include>
+</launch>

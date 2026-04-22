@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<!--
+  与 PX4 worlds/myam_grasping_front.world 中 grasp_blue_cube_ground 位姿保持一致。
+  scene_frame 默认 map：需 mavros local_position/tf/send=true（sitl 已包含 mavros_bridge）。
+-->
+<launch>
+  <arg name="scene_frame" default="map"/>
+  <arg name="cube_tf_frame" default="grasp_blue_cube"/>
+  <!-- 与 myam_grasping_front.world 内 <pose> 一致 -->
+  <arg name="cube_x" default="1.46"/>
+  <arg name="cube_y" default="0.98"/>
+  <arg name="cube_z" default="0.02"/>
+  <arg name="cube_size" default="0.04"/>
+
+  <node pkg="myam_simulation" type="grasp_blue_cube_rviz_sync.py" name="grasp_blue_cube_rviz_sync"
+        output="screen">
+    <param name="scene_frame" value="$(arg scene_frame)"/>
+    <param name="cube_tf_frame" value="$(arg cube_tf_frame)"/>
+    <rosparam param="position" subst_value="True">[$(arg cube_x), $(arg cube_y), $(arg cube_z)]</rosparam>
+    <rosparam param="size" subst_value="True">[$(arg cube_size), $(arg cube_size), $(arg cube_size)]</rosparam>
+  </node>
+</launch>

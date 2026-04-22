@@ -1,0 +1,8 @@
+prefix=/home/demo/test_ws/install
+
+Name: roarm_moveit
+Description: Description of roarm_moveit
+Version: 0.3.0
+Cflags: 
+Libs: -L${prefix}/lib 
+Requires: 

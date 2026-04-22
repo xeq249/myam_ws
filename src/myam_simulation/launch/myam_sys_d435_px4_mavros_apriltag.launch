@@ -1,0 +1,24 @@
+<launch>
+  <!--
+    一键：PX4 SITL（机架 myam_sys_d435）+ MAVROS + Gazebo 仿真 D435 + AprilTag。
+    前提：已编译 PX4（make px4_sitl）；Gazebo 模型路径由 PX4 sitl_run 配置。
+    默认相机前缀 /camera（/camera/color/image_raw 等）。若仿真插件仍发布在 /realsense_d435i，请 camera_ns:=/realsense_d435i。
+  -->
+  <arg name="px4_dir" default="$(env HOME)/PX4-Autopilot" doc="PX4-Autopilot 源码根目录"/>
+  <arg name="sitl_world" default="apriltag" doc="sitl_gazebo-classic/worlds 下世界名（不含 .world）"/>
+  <arg name="start_px4" default="true" doc="是否本机启动 PX4+Gazebo；false 时仅 MAVROS+AprilTag（需已手动跑 SITL）"/>
+  <arg name="camera_ns" default="/camera" doc="彩色图与 camera_info 的命名空间前缀"/>
+
+  <param name="/use_sim_time" value="true"/>
+
+  <group if="$(arg start_px4)">
+    <node name="px4_sitl_gazebo" pkg="myam_simulation" type="start_px4_myam_sys_d435_sitl.sh"
+          output="screen" args="$(arg px4_dir) $(arg sitl_world)"/>
+  </group>
+
+  <include file="$(dirname)/mavros_px4.launch.xml"/>
+
+  <include file="$(dirname)/apriltag_d435.launch.xml">
+    <arg name="camera_ns" value="$(arg camera_ns)"/>
+  </include>
+</launch>

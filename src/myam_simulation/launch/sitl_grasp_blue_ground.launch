@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<!--
+  PX4 SITL + Gazebo(myam_grasping_front：前方地面蓝块) + MoveIt + MAVROS；
+  并启动 grasp_blue_cube_rviz_sync：蓝块在 RViz TF + Planning Scene 中与 Gazebo 对齐。
+
+  用法：
+    source ~/test_ws/devel/setup.bash
+    roslaunch myam_simulation sitl_grasp_blue_ground.launch
+
+  RViz Fixed Frame 建议选 map：此时 map->base_link 由 MAVROS 发布，机体高度与仿真一致；
+  末端规划到 grasp_blue_cube（或碰撞体 grasp_blue_cube）附近即可调试抓取。
+-->
+<launch>
+  <arg name="use_rviz" default="true"/>
+  <arg name="model" default="myuam"/>
+
+  <include file="$(find myam_sys_moveit)/launch/sitl_ground_arm.launch">
+    <arg name="use_rviz" value="$(arg use_rviz)"/>
+    <arg name="model" value="$(arg model)"/>
+    <arg name="world" value="myam_grasping_front"/>
+  </include>
+
+  <include file="$(find myam_simulation)/launch/grasp_blue_world_rviz_sync.launch"/>
+</launch>

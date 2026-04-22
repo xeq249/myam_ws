@@ -1,0 +1,1157 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- DEPRECATED: use myam_sys.xacro (RoArm M3 meshes/joints from roarm_description). This file is the old SolidWorks export. -->
+<!-- This URDF was automatically created by SolidWorks to URDF Exporter! Originally created by Stephen Brawner (brawner@gmail.com) 
+     Commit Version: 1.6.0-4-g7f85cfe  Build Version: 1.6.7995.38578
+     For more information, please see http://wiki.ros.org/sw_urdf_exporter -->
+<robot
+  name="myam_sys">
+  <link name="virtual_base"/>
+
+  <joint name="virtual_joint" type="fixed">
+    <parent link="virtual_base" />
+    <child link="base_link" />
+    <origin xyz="0 0 0" rpy="0 0 0" />
+  </joint>
+  
+  <link
+    name="base_link">
+    <inertial>
+      <origin
+        xyz="0.0019275 0.0022194 -0.052321"
+        rpy="0 0 0" />
+      <mass
+        value="0.89607" />
+      <inertia
+        ixx="0.0016514"
+        ixy="1.4573E-06"
+        ixz="-2.3256E-07"
+        iyy="0.0017986"
+        iyz="-2.7292E-07"
+        izz="0.003277" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://myam_sys/meshes/base_link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="1 1 1 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://myam_sys/meshes/base_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <link
+    name="rotor_1_link">
+    <inertial>
+      <origin
+        xyz="0.00086471 0.00049638 -0.017044"
+        rpy="0 0 0" />
+      <mass
+        value="0.021154" />
+      <inertia
+        ixx="9.7523E-06"
+        ixy="4.5374E-06"
+        ixz="-1.105E-07"
+        iyy="5.1094E-06"
+        iyz="-4.104E-08"
+        izz="1.4591E-05" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://myam_sys/meshes/rotor_1_link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.52941 0.54902 0.54902 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://myam_sys/meshes/rotor_1_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="rotor_1_joint"
+    type="continuous">
+    <origin
+      xyz="0.34877 0.20136 0.041041"
+      rpy="0 0 0" />
+    <parent
+      link="base_link" />
+    <child
+      link="rotor_1_link" />
+    <axis
+      xyz="-0.048924 -0.028246 0.9984" />
+  </joint>
+  <link
+    name="rotor_2_link">
+    <inertial>
+      <origin
+        xyz="0.000921 -0.0005394 -0.016732"
+        rpy="0 0 0" />
+      <mass
+        value="0.021907" />
+      <inertia
+        ixx="1.2151E-05"
+        ixy="-6.0793E-06"
+        ixz="-1.111E-07"
+        iyy="6.1483E-06"
+        iyz="3.528E-08"
+        izz="1.8022E-05" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://myam_sys/meshes/rotor_2_link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="1 1 1 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://myam_sys/meshes/rotor_2_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="rotor_2_joint"
+    type="continuous">
+    <origin
+      xyz="0.3488 -0.20138 0.040896"
+      rpy="0 0 0" />
+    <parent
+      link="base_link" />
+    <child
+      link="rotor_2_link" />
+    <axis
+      xyz="-0.048454 0.027975 0.99843" />
+  </joint>
+  <link
+    name="rotor_3_link">
+    <inertial>
+      <origin
+        xyz="0.00013242 -0.00092207 -0.0171"
+        rpy="0 0 0" />
+      <mass
+        value="0.021043" />
+      <inertia
+        ixx="2.343E-06"
+        ixy="-3.5166E-07"
+        ixz="2.5278E-08"
+        iyy="1.1905E-05"
+        iyz="1.2057E-07"
+        izz="1.3977E-05" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://myam_sys/meshes/rotor_3_link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.52941 0.54902 0.54902 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://myam_sys/meshes/rotor_3_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="rotor_3_joint"
+    type="continuous">
+    <origin
+      xyz="0 -0.40268 0.041175"
+      rpy="0 0 0" />
+    <parent
+      link="base_link" />
+    <child
+      link="rotor_3_link" />
+    <axis
+      xyz="0 0.056997 0.99837" />
+  </joint>
+  <link
+    name="rotor_4_link">
+    <inertial>
+      <origin
+        xyz="-0.00095797 -0.00054628 -0.016731"
+        rpy="0 0 0" />
+      <mass
+        value="0.021907" />
+      <inertia
+        ixx="1.2729E-05"
+        ixy="5.7553E-06"
+        ixz="8.9654E-08"
+        iyy="5.57E-06"
+        iyz="6.6405E-08"
+        izz="1.8023E-05" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://myam_sys/meshes/rotor_4_link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="1 1 1 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://myam_sys/meshes/rotor_4_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="rotor_4_joint"
+    type="continuous">
+    <origin
+      xyz="-0.34883 -0.2014 0.040769"
+      rpy="0 0 0" />
+    <parent
+      link="base_link" />
+    <child
+      link="rotor_4_link" />
+    <axis
+      xyz="0.048041 0.027736 0.99846" />
+  </joint>
+  <link
+    name="rotor_5_link">
+    <inertial>
+      <origin
+        xyz="-0.00078667 0.00047059 -0.017046"
+        rpy="0 0 0" />
+      <mass
+        value="0.021159" />
+      <inertia
+        ixx="1.0284E-05"
+        ixy="-4.2421E-06"
+        ixz="9.245E-08"
+        iyy="4.5973E-06"
+        iyz="-8.1212E-08"
+        izz="1.4609E-05" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://myam_sys/meshes/rotor_5_link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.52941 0.54902 0.54902 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://myam_sys/meshes/rotor_5_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="rotor_5_joint"
+    type="continuous">
+    <origin
+      xyz="-0.34873 0.20134 0.041175"
+      rpy="0 0 0" />
+    <parent
+      link="base_link" />
+    <child
+      link="rotor_5_link" />
+    <axis
+      xyz="0.049361 -0.028499 0.99837" />
+  </joint>
+  <link
+    name="rotor_6_link">
+    <inertial>
+      <origin
+        xyz="4.2471E-06 0.0011028 -0.01673"
+        rpy="0 0 0" />
+      <mass
+        value="0.021907" />
+      <inertia
+        ixx="2.3754E-06"
+        ixy="2.222E-07"
+        ixz="1.2652E-08"
+        iyy="1.5929E-05"
+        iyz="-1.1083E-07"
+        izz="1.8028E-05" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://myam_sys/meshes/rotor_6_link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="1 1 1 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://myam_sys/meshes/rotor_6_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="rotor_6_joint"
+    type="continuous">
+    <origin
+      xyz="0 0.4028 0.040769"
+      rpy="0 0 0" />
+    <parent
+      link="base_link" />
+    <child
+      link="rotor_6_link" />
+    <axis
+      xyz="0 -0.055473 0.99846" />
+  </joint>
+  <link
+    name="gps_link">
+    <inertial>
+      <origin
+        xyz="-9.2484E-05 -7.0948E-06 -0.047946"
+        rpy="0 0 0" />
+      <mass
+        value="0.021692" />
+      <inertia
+        ixx="7.1143E-06"
+        ixy="1.9861E-10"
+        ixz="-6.8846E-08"
+        iyy="7.3732E-06"
+        iyz="1.3427E-10"
+        izz="7.731E-06" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://myam_sys/meshes/gps_link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.25098 0.25098 0.25098 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://myam_sys/meshes/gps_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="gps_joint"
+    type="fixed">
+    <origin
+      xyz="-0.00040701 1.327E-05 0.17697"
+      rpy="0 0 0" />
+    <parent
+      link="base_link" />
+    <child
+      link="gps_link" />
+    <axis
+      xyz="0 0 0" />
+  </joint>
+  <link
+    name="landing_gear_1_link">
+    <inertial>
+      <origin
+        xyz="-6.9473E-05 -0.024646 0.05428"
+        rpy="0 0 0" />
+      <mass
+        value="0.066432" />
+      <inertia
+        ixx="0.00015527"
+        ixy="-3.0385E-08"
+        ixz="6.9106E-08"
+        iyy="0.00049779"
+        iyz="5.5916E-05"
+        izz="0.00040082" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://myam_sys/meshes/landing_gear_1_link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="1 1 1 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://myam_sys/meshes/landing_gear_1_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="landing_gear_1_joint"
+    type="fixed">
+    <origin
+      xyz="-1.3008E-05 0.21064 -0.40283"
+      rpy="0 0 0" />
+    <parent
+      link="base_link" />
+    <child
+      link="landing_gear_1_link" />
+    <axis
+      xyz="0 0 0" />
+  </joint>
+  <link
+    name="landing_gear_2_link">
+    <inertial>
+      <origin
+        xyz="-6.9052E-05 0.024604 0.0543"
+        rpy="0 0 0" />
+      <mass
+        value="0.066432" />
+      <inertia
+        ixx="0.00015527"
+        ixy="3.3281E-08"
+        ixz="6.8002E-08"
+        iyy="0.00049778"
+        iyz="-5.592E-05"
+        izz="0.00040082" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://myam_sys/meshes/landing_gear_2_link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="1 1 1 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://myam_sys/meshes/landing_gear_2_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="landing_gear_2_joint"
+    type="fixed">
+    <origin
+      xyz="-1.3008E-05 -0.21064 -0.40283"
+      rpy="0 0 0" />
+    <parent
+      link="base_link" />
+    <child
+      link="landing_gear_2_link" />
+    <axis
+      xyz="0 0 0" />
+  </joint>
+  <link
+    name="camera_link">
+    <inertial>
+      <origin
+        xyz="2.7559E-05 8.6135E-06 0.012484"
+        rpy="0 0 0" />
+      <mass
+        value="0.052666" />
+      <inertia
+        ixx="3.4703E-05"
+        ixy="2.864E-09"
+        ixz="-2.9261E-09"
+        iyy="5.3314E-06"
+        iyz="-1.6644E-09"
+        izz="3.4537E-05" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://myam_sys/meshes/camera_link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="1 1 1 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://myam_sys/meshes/camera_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="camera_joint"
+    type="fixed">
+    <origin
+      xyz="0.16709 -0.00065357 -0.17212"
+      rpy="0 0 0" />
+    <parent
+      link="base_link" />
+    <child
+      link="camera_link" />
+    <axis
+      xyz="0 0 0" />
+  </joint>
+  <link
+    name="arm_base_link">
+    <inertial>
+      <origin
+        xyz="0.0064899 -0.001028 -0.030677"
+        rpy="0 0 0" />
+      <mass
+        value="0.066148" />
+      <inertia
+        ixx="7.2731E-06"
+        ixy="-6.6999E-08"
+        ixz="1.8245E-08"
+        iyy="1.4918E-05"
+        iyz="-4.4824E-10"
+        izz="2.0632E-05" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://myam_sys/meshes/arm_base_link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.95294 0.79608 0.48627 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://myam_sys/meshes/arm_base_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="arm_base_joint"
+    type="fixed">
+    <origin
+      xyz="0.073168 -0.0021131 -0.16312"
+      rpy="0 0 0.00022095" />
+    <parent
+      link="base_link" />
+    <child
+      link="arm_base_link" />
+    <axis
+      xyz="0 0 0" />
+  </joint>
+  <link
+    name="arm_link1">
+    <inertial>
+      <origin
+        xyz="2.2496E-10 -5.0076E-14 -0.023537"
+        rpy="0 0 0" />
+      <mass
+        value="0.076878" />
+      <inertia
+        ixx="1.8473E-05"
+        ixy="-1.1688E-09"
+        ixz="-1.7529E-15"
+        iyy="1.7204E-05"
+        iyz="-8.1054E-19"
+        izz="1.1429E-05" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://myam_sys/meshes/arm_link1.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.098039 0.098039 0.098039 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://myam_sys/meshes/arm_link1.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="arm_base_link_to_arm_link1"
+    type="revolute">
+    <origin
+      xyz="-7.7471E-05 -0.003505 -0.0661"
+      rpy="0 0 0" />
+    <parent
+      link="arm_base_link" />
+    <child
+      link="arm_link1" />
+    <axis
+      xyz="0 0 1" />
+    <limit
+      lower="-3.1416"
+      upper="3.1416"
+      effort="0"
+      velocity="0" />
+  </joint>
+  <link
+    name="arm_link2">
+    <inertial>
+      <origin
+        xyz="0.00066682 -0.037863 -0.12527"
+        rpy="0 0 0" />
+      <mass
+        value="0.059464" />
+      <inertia
+        ixx="0.0001634"
+        ixy="1.3326E-12"
+        ixz="1.9356E-08"
+        iyy="0.00016051"
+        iyz="-1.6093E-12"
+        izz="9.4575E-06" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://myam_sys/meshes/arm_link2.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0 0 0 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://myam_sys/meshes/arm_link2.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="arm_link1_to_arm_link2"
+    type="revolute">
+    <origin
+      xyz="0 0.03791 -0.037959"
+      rpy="0 0 -0.00022093" />
+    <parent
+      link="arm_link1" />
+    <child
+      link="arm_link2" />
+    <axis
+      xyz="0 -1 0" />
+    <limit
+      lower="-1.5708"
+      upper="1.5708"
+      effort="0"
+      velocity="0" />
+  </joint>
+  <link
+    name="arm_link3">
+    <inertial>
+      <origin
+        xyz="0.073339 0.019287 -0.0012492"
+        rpy="0 0 0" />
+      <mass
+        value="0.084379" />
+      <inertia
+        ixx="5.7929E-06"
+        ixy="7.6485E-09"
+        ixz="-2.4768E-14"
+        iyy="1.7095E-05"
+        iyz="2.6116E-14"
+        izz="1.5738E-05" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://myam_sys/meshes/arm_link3.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.098039 0.098039 0.098039 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://myam_sys/meshes/arm_link3.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="arm_link2_to_arm_link3"
+    type="revolute">
+    <origin
+      xyz="0.030002 -0.05652 -0.23682"
+      rpy="0 0 0" />
+    <parent
+      link="arm_link2" />
+    <child
+      link="arm_link3" />
+    <axis
+      xyz="0 1 0" />
+    <limit
+      lower="-1"
+      upper="2.95"
+      effort="0"
+      velocity="0" />
+  </joint>
+  <link
+    name="arm_link4">
+    <inertial>
+      <origin
+        xyz="0.036169 -0.018401 0.00045128"
+        rpy="0 0 0" />
+      <mass
+        value="0.039017" />
+      <inertia
+        ixx="9.1646E-06"
+        ixy="7.2278E-09"
+        ixz="3.5068E-07"
+        iyy="7.9345E-06"
+        iyz="2.845E-08"
+        izz="4.9085E-06" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://myam_sys/meshes/arm_link4.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0 0 0 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://myam_sys/meshes/arm_link4.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="arm_link3_to_arm_link4"
+    type="revolute">
+    <origin
+      xyz="0.14449 0.0382 0"
+      rpy="-0.0087263 -7.615E-05 -0.008726" />
+    <parent
+      link="arm_link3" />
+    <child
+      link="arm_link4" />
+    <axis
+      xyz="0.0087259 -0.99992 -0.0087265" />
+    <limit
+      lower="-1.5708"
+      upper="1.5708"
+      effort="0"
+      velocity="0" />
+  </joint>
+  <link
+    name="arm_link5">
+    <inertial>
+      <origin
+        xyz="0.041581 -0.00037907 -0.00018985"
+        rpy="0 0 0" />
+      <mass
+        value="0.043905" />
+      <inertia
+        ixx="3.8814E-06"
+        ixy="-1.4347E-07"
+        ixz="-8.6494E-08"
+        iyy="1.0936E-05"
+        iyz="-1.6194E-07"
+        izz="1.115E-05" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://myam_sys/meshes/arm_link5.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0 0 0 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://myam_sys/meshes/arm_link5.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="arm_link4_to_arm_link5"
+    type="revolute">
+    <origin
+      xyz="0.05442 -0.018356 0.013649"
+      rpy="0.0087266 0 0.0087263" />
+    <parent
+      link="arm_link4" />
+    <child
+      link="arm_link5" />
+    <axis
+      xyz="-1 0 0" />
+    <limit
+      lower="-3.1416"
+      upper="3.1416"
+      effort="0"
+      velocity="0" />
+  </joint>
+  <link
+    name="gripper_link">
+    <inertial>
+      <origin
+        xyz="0.028886 -0.00096006 -0.019066"
+        rpy="0 0 0" />
+      <mass
+        value="0.003657" />
+      <inertia
+        ixx="1.1514E-06"
+        ixy="1.3125E-07"
+        ixz="-2.607E-12"
+        iyy="2.3304E-06"
+        iyz="1.202E-12"
+        izz="1.4718E-06" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://myam_sys/meshes/gripper_link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0 0 0 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://myam_sys/meshes/gripper_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="arm_link5_to_gripper_link"
+    type="revolute">
+    <origin
+      xyz="0.053251 0 0.01894"
+      rpy="0 0 0" />
+    <parent
+      link="arm_link5" />
+    <child
+      link="gripper_link" />
+    <axis
+      xyz="0 0 -1" />
+    <limit
+      lower="0"
+      upper="1.5"
+      effort="0"
+      velocity="0" />
+  </joint>
+
+  <!-- transmissions for MoveIt + ros_control -->
+  <transmission type="transmission_interface/SimpleTransmission">
+    <name>arm_base_link_to_arm_link1_transmission</name>
+    <joint name="arm_base_link_to_arm_link1">
+      <hardwareInterface>PositionJointInterface</hardwareInterface>
+    </joint>
+    <actuator name="arm_base_link_to_arm_link1_motor">
+      <hardwareInterface>PositionJointInterface</hardwareInterface>
+      <mechanicalReduction>1.0</mechanicalReduction>
+    </actuator>
+  </transmission>
+  <transmission type="transmission_interface/SimpleTransmission">
+    <name>arm_link1_to_arm_link2_transmission</name>
+    <joint name="arm_link1_to_arm_link2">
+      <hardwareInterface>PositionJointInterface</hardwareInterface>
+    </joint>
+    <actuator name="arm_link1_to_arm_link2_motor">
+      <hardwareInterface>PositionJointInterface</hardwareInterface>
+      <mechanicalReduction>1.0</mechanicalReduction>
+    </actuator>
+  </transmission>
+  <transmission type="transmission_interface/SimpleTransmission">
+    <name>arm_link2_to_arm_link3_transmission</name>
+    <joint name="arm_link2_to_arm_link3">
+      <hardwareInterface>PositionJointInterface</hardwareInterface>
+    </joint>
+    <actuator name="arm_link2_to_arm_link3_motor">
+      <hardwareInterface>PositionJointInterface</hardwareInterface>
+      <mechanicalReduction>1.0</mechanicalReduction>
+    </actuator>
+  </transmission>
+  <transmission type="transmission_interface/SimpleTransmission">
+    <name>arm_link3_to_arm_link4_transmission</name>
+    <joint name="arm_link3_to_arm_link4">
+      <hardwareInterface>PositionJointInterface</hardwareInterface>
+    </joint>
+    <actuator name="arm_link3_to_arm_link4_motor">
+      <hardwareInterface>PositionJointInterface</hardwareInterface>
+      <mechanicalReduction>1.0</mechanicalReduction>
+    </actuator>
+  </transmission>
+  <transmission type="transmission_interface/SimpleTransmission">
+    <name>arm_link4_to_arm_link5_transmission</name>
+    <joint name="arm_link4_to_arm_link5">
+      <hardwareInterface>PositionJointInterface</hardwareInterface>
+    </joint>
+    <actuator name="arm_link4_to_arm_link5_motor">
+      <hardwareInterface>PositionJointInterface</hardwareInterface>
+      <mechanicalReduction>1.0</mechanicalReduction>
+    </actuator>
+  </transmission>
+
+  <transmission type="transmission_interface/SimpleTransmission">
+    <name>arm_link5_to_gripper_link_transmission</name>
+    <joint name="arm_link5_to_gripper_link">
+      <hardwareInterface>PositionJointInterface</hardwareInterface>
+    </joint>
+    <actuator name="arm_link5_to_gripper_link_motor">
+      <hardwareInterface>PositionJointInterface</hardwareInterface>
+      <mechanicalReduction>1.0</mechanicalReduction>
+    </actuator>
+  </transmission>
+
+  <link
+    name="battery_link">
+    <inertial>
+      <origin
+        xyz="0.00029704 2.2272E-05 -0.03097"
+        rpy="0 0 0" />
+      <mass
+        value="0.81869" />
+      <inertia
+        ixx="0.0006387"
+        ixy="1.868E-08"
+        ixz="2.3817E-07"
+        iyy="0.0024088"
+        iyz="1.483E-08"
+        izz="0.0025261" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://myam_sys/meshes/battery_link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="1 0 0 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://myam_sys/meshes/battery_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="battery_joint"
+    type="fixed">
+    <origin
+      xyz="-0.061817 -2.2522E-05 -0.068921"
+      rpy="0 0 0" />
+    <parent
+      link="base_link" />
+    <child
+      link="battery_link" />
+    <axis
+      xyz="0 0 0" />
+  </joint>
+  <link
+    name="imu_link">
+    <inertial>
+      <origin
+        xyz="3.5351E-08 -3.8086E-05 -0.01316"
+        rpy="0 0 0" />
+      <mass
+        value="0.032701" />
+      <inertia
+        ixx="4.3489E-06"
+        ixy="1.1654E-11"
+        ixz="2.1492E-11"
+        iyy="6.4476E-06"
+        iyz="-8.3306E-10"
+        izz="7.102E-06" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://myam_sys/meshes/imu_link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.89804 0.91765 0.92941 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://myam_sys/meshes/imu_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="imu_joint"
+    type="fixed">
+    <origin
+      xyz="-0.095599 4.0507E-05 -0.013807"
+      rpy="0 0 0" />
+    <parent
+      link="base_link" />
+    <child
+      link="imu_link" />
+    <axis
+      xyz="0 0 0" />
+  </joint>
+</robot>

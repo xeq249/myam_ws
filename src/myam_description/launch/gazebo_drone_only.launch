@@ -1,0 +1,30 @@
+<launch>
+  <!-- 仅无人机（无机械臂、无 ros_control 臂控制器），用于对照 myam_sys：若此处仍卡地，问题在机身/起落架/高度；若此处正常而整机不正常，偏向臂碰撞或臂控制。 -->
+  <arg name="paused" default="true"/>
+  <arg name="use_sim_time" default="true"/>
+  <arg name="gui" default="true"/>
+  <arg name="headless" default="false"/>
+  <arg name="debug" default="false"/>
+  <arg name="verbose" default="false"/>
+  <arg name="world_name" default="worlds/empty.world"/>
+  <arg name="spawn_z" default="0.85"/>
+
+  <include file="$(find gazebo_ros)/launch/empty_world.launch">
+    <arg name="paused" value="$(arg paused)"/>
+    <arg name="use_sim_time" value="$(arg use_sim_time)"/>
+    <arg name="gui" value="$(arg gui)"/>
+    <arg name="headless" value="$(arg headless)"/>
+    <arg name="debug" value="$(arg debug)"/>
+    <arg name="verbose" value="$(arg verbose)"/>
+    <arg name="world_name" value="$(arg world_name)"/>
+  </include>
+
+  <param name="robot_description" command="xacro '$(find myam_description)/urdf/myam_drone_only.xacro'"/>
+
+  <node name="spawn_drone_only" pkg="gazebo_ros" type="spawn_model" output="screen"
+        args="-urdf -param robot_description -model myam_drone_only -x 0 -y 0 -z $(arg spawn_z)"/>
+
+  <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher">
+    <param name="use_sim_time" value="$(arg use_sim_time)"/>
+  </node>
+</launch>

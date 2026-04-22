@@ -1,0 +1,15 @@
+<launch>
+  <arg name="model" default="$(find roarm_description)/urdf/roarm_m3/roarm_m3.xacro"/>
+  <arg name="rviz_config" default="$(find roarm_description)/config/roarm_m3.rviz"/>
+  <arg name="use_rviz" default="true"/>
+
+  <param name="robot_description" command="$(find xacro)/xacro $(arg model)"/>
+
+  <node name="joint_state_publisher_gui" pkg="joint_state_publisher_gui" type="joint_state_publisher_gui"/>
+
+  <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher"/>
+
+  <group if="$(arg use_rviz)">
+    <node name="rviz" pkg="rviz" type="rviz" args="-d $(arg rviz_config)" required="true"/>
+  </group>
+</launch>

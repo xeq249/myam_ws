@@ -1,0 +1,44 @@
+<launch>
+  <arg name="paused" default="true"/>
+  <arg name="use_sim_time" default="true"/>
+  <arg name="gui" default="true"/>
+  <arg name="headless" default="false"/>
+  <arg name="debug" default="false"/>
+  <arg name="verbose" default="false"/>
+  <arg name="world_name" default="worlds/empty.world"/>
+  <!-- 起落架在 base_link 下方约 0.4 m+；机械臂关节默认全 0 时末端可能更低，仅加 z 仍易穿地，故 spawn 时用 -J 设 home -->
+  <arg name="spawn_z" default="0.85"/>
+  <!-- 与 MoveIt / 常用 home 一致，避免零位下垂顶地 -->
+  <arg name="spawn_j1" default="0"/>
+  <arg name="spawn_j2" default="-1.5708"/>
+  <arg name="spawn_j3" default="2.95"/>
+  <arg name="spawn_j4" default="0"/>
+  <arg name="spawn_j5" default="0"/>
+  <arg name="spawn_jg" default="0"/>
+  <!-- spawn_model 先 spawn 再 set_model_configuration；-J 的 home 若晚于 gazebo_ros_control 加载，轨迹控制器可能先锁住全 0。此处延迟再 spawner，保证模型先到 home 再加载控制器 -->
+  <arg name="controller_spawn_delay" default="2"/>
+
+  <include file="$(find gazebo_ros)/launch/empty_world.launch">
+    <arg name="paused" value="$(arg paused)"/>
+    <arg name="use_sim_time" value="$(arg use_sim_time)"/>
+    <arg name="gui" value="$(arg gui)"/>
+    <arg name="headless" value="$(arg headless)"/>
+    <arg name="debug" value="$(arg debug)"/>
+    <arg name="verbose" value="$(arg verbose)"/>
+    <arg name="world_name" value="$(arg world_name)"/>
+  </include>
+
+  <param name="robot_description" command="xacro '$(find myam_description)/urdf/myam_sys.xacro'"/>
+
+  <node name="spawn_myam" pkg="gazebo_ros" type="spawn_model" output="screen"
+        args="-urdf -param robot_description -model myam_sys -x 0 -y 0 -z $(arg spawn_z) -J base_link_to_link1 $(arg spawn_j1) -J link1_to_link2 $(arg spawn_j2) -J link2_to_link3 $(arg spawn_j3) -J link3_to_link4 $(arg spawn_j4) -J link4_to_link5 $(arg spawn_j5) -J link5_to_gripper_link $(arg spawn_jg)"/>
+
+  <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher">
+    <param name="use_sim_time" value="$(arg use_sim_time)"/>
+  </node>
+
+  <rosparam file="$(find myam_description)/config/gazebo_ros_control.yaml" command="load"/>
+  <node name="controller_spawner" pkg="myam_description" type="delayed_controller_spawner.sh" respawn="false"
+        output="screen"
+        args="$(arg controller_spawn_delay) joint_state_controller arm_controller gripper_controller"/>
+</launch>

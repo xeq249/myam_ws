@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<robot name="myam_roarm" xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <!--
+    仅机械臂 + 与机身对接：供 PX4 Gazebo 中 libgazebo_ros_control.so 使用（robotParam=/myam_arm_description）。
+    关节树必须与 sitl_gazebo-classic/models/myam/myam.sdf 一致：
+      base_link, arm_mount_joint, roarm_base_link, 各 arm 关节, hand_tcp。
+    与 myam_sys.xacro / config/gazebo_myam_sys.urdf 中机械臂段一致（同一 arm_mount 位姿），勿再使用
+    单独的 mount_link 虚拟根，否则与 SDF 中 base_link 到 roarm_base_link 不匹配。
+  -->
+  <link name="base_link">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="0.001"/>
+      <inertia ixx="1e-9" ixy="0" ixz="0" iyy="1e-9" iyz="0" izz="1e-9"/>
+    </inertial>
+  </link>
+
+  <xacro:include filename="$(find myam_description)/urdf/roarm_m3_arm_mounted.xacro"/>
+  <xacro:roarm_m3_arm_mounted
+    parent_link="base_link"
+    mount_xyz="0.073168 -0.0021131 -0.2185"
+    mount_rpy="3.141592653589793 0 0.00022095"/>
+
+  <!-- libgazebo_ros_control 在 PX4 的 myam.sdf 中加载；此处仅提供关节树供 robotParam 匹配 -->
+</robot>

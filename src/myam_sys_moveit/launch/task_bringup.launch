@@ -1,0 +1,29 @@
+<launch>
+  <arg name="start_px4" default="true"/>
+  <arg name="model" default="myuam"/>
+  <arg name="world" default="myam_arm_apriltag"/>
+  <arg name="use_rviz" default="true"/>
+  <arg name="start_task" default="false"/>
+
+  <include file="$(dirname)/arm_moveit.launch">
+    <arg name="use_rviz" value="$(arg use_rviz)"/>
+    <arg name="gazebo_model_name" value="$(arg model)"/>
+  </include>
+
+  <include if="$(arg start_px4)" file="$(dirname)/px4_gazebo.launch">
+    <arg name="model" value="$(arg model)"/>
+    <arg name="world" value="$(arg world)"/>
+  </include>
+
+  <include file="$(dirname)/mavros_bridge.launch"/>
+  <include file="$(dirname)/perception.launch"/>
+
+  <node if="$(arg start_task)"
+        pkg="myam_sys_moveit"
+        type="offboard_arm_apriltag_grasp.py"
+        name="offboard_arm_apriltag_grasp"
+        output="screen">
+    <param name="auto_offboard" value="true"/>
+    <param name="auto_arm" value="true"/>
+  </node>
+</launch>

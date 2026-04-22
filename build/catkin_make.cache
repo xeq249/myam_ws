@@ -1,0 +1,2 @@
+apriltag_ros:myam_description:myam_simulation:myam_sys_moveit:roarm_description
+-DCATKIN_DEVEL_PREFIX=/home/demo/test_ws/devel -DCMAKE_INSTALL_PREFIX=/home/demo/test_ws/install -G Unix Makefiles

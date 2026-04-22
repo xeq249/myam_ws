@@ -1,0 +1,62 @@
+<?xml version="1.0"?>
+<launch>
+  <arg name="use_sim_time" default="true"/>
+  <arg name="use_rviz" default="true"/>
+  <arg name="load_robot_description" default="true"/>
+  <!-- 须与 PX4 sitl_run.sh 中 gz spawn 的 model_name 一致（默认 myuam）；注释内勿写双连字符 -->
+  <arg name="gazebo_model_name" default="myuam"/>
+  <!-- px4+gazebo：补全旋翼 joint + MoveIt；fake 模式下在 demo.launch 覆盖为 joint_states -->
+  <arg name="joint_states_topic" default="/joint_states_merged"/>
+  <param name="/use_sim_time" value="$(arg use_sim_time)"/>
+
+  <param name="robot_description" command="xacro '$(find myam_description)/urdf/myam_sys.xacro'"/>
+  <param name="myam_arm_description" command="xacro '$(find myam_description)/urdf/myam_roarm_effort.xacro'"/>
+
+  <rosparam file="$(dirname)/../config/gazebo_controllers.yaml" command="load"/>
+
+  <node pkg="myam_sys_moveit" type="merge_arm_rotor_joint_states.py" name="merge_arm_rotor_joint_states" output="screen">
+    <param name="source_topic" value="/joint_states"/>
+    <param name="output_topic" value="/joint_states_merged"/>
+  </node>
+
+  <node pkg="robot_state_publisher" type="robot_state_publisher" name="robot_state_publisher" output="screen">
+    <remap from="joint_states" to="$(arg joint_states_topic)"/>
+  </node>
+
+  <node name="arm_controller_spawner" pkg="controller_manager" type="spawner" respawn="false"
+        output="screen" args="--no-timeout joint_state_controller arm_controller gripper_controller"/>
+
+  <node name="arm_home_hold_on_start" pkg="myam_sys_moveit" type="send_arm_hold_traj.py" output="screen">
+    <param name="wait_after_start" value="1.0"/>
+    <param name="move_duration" value="8.0"/>
+    <param name="wait_for_subscribers_timeout" value="180.0"/>
+    <!-- 与 PX4 spawn 默认 0.85m 一致；再设一次防偏差 -->
+    <param name="pre_home_air_z" value="0.85"/>
+    <param name="ground_z_before_unpause" value="-1"/>
+    <param name="lower_to_ground_after_unpause" value="false"/>
+    <param name="ground_settle_after_unpause_sec" value="1.5"/>
+    <param name="ground_lower_steps" value="14"/>
+    <param name="ground_lower_duration_s" value="2.5"/>
+    <!-- 勿在「暂停」阶段长时间发轨迹：物理不步进时 PX4 仍可能无 IMU。置 0，改在解暂停后以 100Hz 维持 10s -->
+    <param name="pre_unpause_hold_seconds" value="0"/>
+    <param name="hold_rate_hz_while_paused" value="100.0"/>
+    <param name="hold_point_duration" value="0.05"/>
+    <param name="hold_republish_seconds" value="10.0"/>
+    <param name="hold_publish_rate_hz" value="100.0"/>
+    <param name="controller_manager_ns" value="/controller_manager"/>
+    <param name="wait_controllers_timeout" value="90.0"/>
+    <rosparam param="hold_positions">[0.0, 1.05, 1.57, 0.0, 0.0]</rosparam>
+    <rosparam param="hold_gripper_positions">[0.0]</rosparam>
+    <param name="set_home_with_gazebo" value="true"/>
+    <param name="gazebo_model_name" value="$(arg gazebo_model_name)"/>
+    <param name="urdf_param_name" value="/myam_arm_description"/>
+    <param name="unpause_gazebo" value="true"/>
+  </node>
+
+  <include file="$(dirname)/demo.launch">
+    <arg name="load_robot_description" value="false"/>
+    <arg name="moveit_controller_manager" value="ros_control"/>
+    <arg name="use_rviz" value="$(arg use_rviz)"/>
+    <arg name="joint_states_topic" value="$(arg joint_states_topic)"/>
+  </include>
+</launch>

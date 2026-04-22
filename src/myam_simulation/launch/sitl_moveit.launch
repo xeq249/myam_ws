@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<launch>
+  <!--
+    与下列命令等效：
+    roslaunch myam_sys_moveit sitl_ground_arm.launch model:=myuam world:=myam_empty
+    PX4 SITL + Gazebo + myuam + MoveIt/RViz + MAVROS
+  -->
+  <arg name="use_rviz" default="true"/>
+  <arg name="model" default="myuam"/>
+  <arg name="world" default="myam_empty"/>
+
+  <include file="$(find myam_sys_moveit)/launch/sitl_ground_arm.launch">
+    <arg name="use_rviz" value="$(arg use_rviz)"/>
+    <arg name="model" value="$(arg model)"/>
+    <arg name="world" value="$(arg world)"/>
+  </include>
+</launch>

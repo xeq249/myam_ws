@@ -1,0 +1,29 @@
+<launch>
+  <!-- This file summarizes all settings required for trajectory execution  -->
+
+  <!-- Define moveit controller manager plugin: fake, simple, or ros_control -->
+  <arg name="moveit_controller_manager" />
+  <arg name="fake_execution_type" default="interpolate" />
+
+  <!-- Flag indicating whether MoveIt is allowed to load/unload  or switch controllers -->
+  <arg name="moveit_manage_controllers" default="true"/>
+  <param name="moveit_manage_controllers" value="$(arg moveit_manage_controllers)"/>
+
+  <!-- 允许执行时长 = 名义时长 * scaling + margin（Noetic dynreconf 多为 scaling≤10、margin≤30） -->
+  <arg name="allowed_execution_duration_scaling" default="10.0"/>
+  <arg name="allowed_goal_duration_margin" default="30.0"/>
+
+  <!-- When determining the expected duration of a trajectory, this multiplicative factor is applied to get the allowed duration of execution -->
+  <param name="trajectory_execution/allowed_execution_duration_scaling" value="$(arg allowed_execution_duration_scaling)"/>
+  <param name="trajectory_execution/allowed_goal_duration_margin" value="$(arg allowed_goal_duration_margin)"/>
+  <!-- 仿真 effort 臂易慢于名义轨迹：关闭执行时长监控可避免反复 ABORTED: TIMED_OUT（实机请改回 true） -->
+  <param name="trajectory_execution/execution_duration_monitoring" value="false"/>
+  <!-- Allowed joint-value tolerance for validation that trajectory's first point matches current robot state -->
+  <!-- 略放宽：仿真关节状态与控制命令间常有小偏差，过小会拒轨迹或拖长重规划 -->
+  <param name="trajectory_execution/allowed_start_tolerance" value="0.32"/>
+
+  <!-- We use pass_all_args=true here to pass fake_execution_type, which is required by fake controllers, but not by real-robot controllers.
+       As real-robot controller_manager.launch files shouldn't be required to define this argument, we use the trick of passing all args. -->
+  <include file="$(dirname)/$(arg moveit_controller_manager)_moveit_controller_manager.launch.xml" pass_all_args="true" />
+
+</launch>

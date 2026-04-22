@@ -1,0 +1,344 @@
+<?xml version="1.0" ?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <!--
+    RoArm M3 on UAV: same joint names as roarm_description (base_link_to_link1, ...).
+    Arm base link is roarm_base_link to avoid clashing with drone base_link.
+    Meshes: roarm_description/meshes/roarm_m3/*.stl
+  -->
+  <xacro:macro name="roarm_m3_arm_mounted" params="parent_link mount_xyz mount_rpy minimal_gripper_collision:=false">
+    <material name="silver">
+      <color rgba="0.700 0.700 0.700 1.000"/>
+    </material>
+
+    <!-- 父 link 上 origin 的 rpy：常需 roll=π 将 roarm 的 +Z 伸臂方向翻到机身 −Z（朝下），由 myam_sys.xacro 传入 -->
+    <joint name="arm_mount_joint" type="fixed">
+      <origin xyz="${mount_xyz}" rpy="${mount_rpy}"/>
+      <parent link="${parent_link}"/>
+      <child link="roarm_base_link"/>
+    </joint>
+
+    <link name="roarm_base_link">
+      <inertial>
+        <origin xyz="-0.0068 0 -0.03" rpy="0 0 0"/>
+        <mass value="0.2562183"/>
+        <inertia ixx="0.00029211" ixy="0" ixz="0" iyy="0.00035719" iyz="0" izz="0.000349421"/>
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="file://$(find roarm_description)/meshes/roarm_m3/base_link.stl" scale="0.001 0.001 0.001"/>
+        </geometry>
+        <material name="silver"/>
+      </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="file://$(find roarm_description)/meshes/roarm_m3/base_link.stl" scale="0.001 0.001 0.001"/>
+        </geometry>
+      </collision>
+    </link>
+
+    <link name="link1">
+      <inertial>
+        <origin xyz="0 0 0.037" rpy="0 0 0"/>
+        <mass value="0.0729177"/>
+        <inertia ixx="4.68465E-05" ixy="0" ixz="0" iyy="3.32107E-05" iyz="0" izz="5.01023E-05"/>
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="file://$(find roarm_description)/meshes/roarm_m3/link1.stl" scale="0.001 0.001 0.001"/>
+        </geometry>
+        <material name="silver"/>
+      </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="file://$(find roarm_description)/meshes/roarm_m3/link1.stl" scale="0.001 0.001 0.001"/>
+        </geometry>
+      </collision>
+    </link>
+
+    <link name="link2">
+      <inertial>
+        <origin xyz="0.119 0.012247 -0.0001" rpy="0 0 0"/>
+        <mass value="0.0703216"/>
+        <inertia ixx="5.46501E-05" ixy="0" ixz="0" iyy="0.000423091" iyz="0" izz="0.000404557"/>
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="file://$(find roarm_description)/meshes/roarm_m3/link2.stl" scale="0.001 0.001 0.001"/>
+        </geometry>
+        <material name="silver"/>
+      </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="file://$(find roarm_description)/meshes/roarm_m3/link2.stl" scale="0.001 0.001 0.001"/>
+        </geometry>
+      </collision>
+    </link>
+
+    <link name="link3">
+      <inertial>
+        <origin xyz="-0.0015 -0.0765 0.00505" rpy="0 0 0"/>
+        <mass value="0.021608"/>
+        <inertia ixx="6.37699E-05" iyy="3.67026E-06" izz="6.28965E-05" ixy="0.0" iyz="0" ixz="0"/>
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="file://$(find roarm_description)/meshes/roarm_m3/link3.stl" scale="0.001 0.001 0.001"/>
+        </geometry>
+        <material name="silver"/>
+      </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="file://$(find roarm_description)/meshes/roarm_m3/link3.stl" scale="0.001 0.001 0.001"/>
+        </geometry>
+      </collision>
+    </link>
+
+    <link name="link4">
+      <inertial>
+        <origin xyz="-0.0015 -0.022 -0.00075" rpy="0 0 0"/>
+        <mass value="0.0099933"/>
+        <inertia ixx="4.53979E-06" iyy="3.78103E-06" izz="5.60238E-06" ixy="-0.0" iyz="-0.0" ixz="0.0"/>
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="file://$(find roarm_description)/meshes/roarm_m3/link4.stl" scale="0.001 0.001 0.001"/>
+        </geometry>
+        <material name="silver"/>
+      </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="file://$(find roarm_description)/meshes/roarm_m3/link4.stl" scale="0.001 0.001 0.001"/>
+        </geometry>
+      </collision>
+    </link>
+
+    <link name="link5">
+      <inertial>
+        <origin xyz="-0.0078 0 0.0595" rpy="0 0 0"/>
+        <mass value="0.0153928"/>
+        <inertia ixx="2.02869E-05" iyy="2.14427E-05" izz="4.39495E-06" ixy="-0.0" iyz="0" ixz="0"/>
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="file://$(find roarm_description)/meshes/roarm_m3/link5.stl" scale="0.001 0.001 0.001"/>
+        </geometry>
+        <material name="silver"/>
+      </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="file://$(find roarm_description)/meshes/roarm_m3/link5.stl" scale="0.001 0.001 0.001"/>
+        </geometry>
+      </collision>
+    </link>
+
+    <link name="gripper_link">
+      <inertial>
+        <origin xyz="0.027 0.0027 -0.018935" rpy="0 0 0"/>
+        <mass value="0.0028708"/>
+        <inertia ixx="5.23216E-07" ixy="0" ixz="0" iyy="1.82071E-06" iyz="0" izz="1.60231E-06"/>
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="file://$(find roarm_description)/meshes/roarm_m3/gripper_link.stl" scale="0.001 0.001 0.001"/>
+        </geometry>
+        <material name="silver"/>
+      </visual>
+      <xacro:unless value="${minimal_gripper_collision}">
+        <collision>
+          <origin xyz="0 0 0" rpy="0 0 0"/>
+          <geometry>
+            <mesh filename="file://$(find roarm_description)/meshes/roarm_m3/gripper_link.stl" scale="0.001 0.001 0.001"/>
+          </geometry>
+        </collision>
+      </xacro:unless>
+    </link>
+
+    <link name="hand_tcp"/>
+
+    <joint name="base_link_to_link1" type="revolute">
+      <origin xyz="0.0 0.0 0.0" rpy="0 0 0"/>
+      <parent link="roarm_base_link"/>
+      <child link="link1"/>
+      <axis xyz="0.0 0.0 1.0"/>
+      <!-- RoArm uses TTL bus position servos.
+           30 kg.cm @ 12V ~= 2.94 N.m stall torque; simulation keeps a small margin below stall. -->
+      <limit lower="-3.1416" upper="3.1416" effort="2.8" velocity="2.2"/>
+      <!-- 基线：阻尼/摩擦全 0，优先不卡地；塌臂时再把 damping 按 link4→link3→… 小步增加 -->
+      <dynamics damping="0.001" friction="0.001"/>
+    </joint>
+
+    <joint name="link1_to_link2" type="revolute">
+      <origin xyz="0.0 0.0 0.051959" rpy="-1.5708 -1.5708 0"/>
+      <parent link="link1"/>
+      <child link="link2"/>
+      <axis xyz="-0.0 0 1.0"/>
+      <limit lower="-1.5708" upper="1.5708" effort="2.8" velocity="2.0"/>
+      <dynamics damping="0.001" friction="0.001"/>
+    </joint>
+
+    <joint name="link2_to_link3" type="revolute">
+      <origin xyz="0.236815 0.030002 0" rpy="0 0 1.5708"/>
+      <parent link="link2"/>
+      <child link="link3"/>
+      <axis xyz="0.0 0.0 1.0"/>
+      <limit lower="-1" upper="2.95" effort="2.6" velocity="2.0"/>
+      <dynamics damping="0.001" friction="0.001"/>
+    </joint>
+
+    <joint name="link3_to_link4" type="revolute">
+      <origin xyz="0.0 -0.144586 0" rpy="0 0 0"/>
+      <parent link="link3"/>
+      <child link="link4"/>
+      <axis xyz="0.0 0.0 1.0"/>
+      <limit lower="-1.5708" upper="1.5708" effort="1.9" velocity="2.5"/>
+      <dynamics damping="0.005" friction="0.005"/>
+    </joint>
+
+    <joint name="link4_to_link5" type="revolute">
+      <origin xyz="0.015147 -0.053653 0" rpy="1.5708 1.5708 0"/>
+      <parent link="link4"/>
+      <child link="link5"/>
+      <axis xyz="0.0 0.0 1.0"/>
+      <limit lower="-3.1416" upper="3.1416" effort="1.9" velocity="2.5"/>
+      <dynamics damping="0.001" friction="0.001"/>
+    </joint>
+
+    <joint name="link5_to_gripper_link" type="revolute">
+      <origin xyz="0.00 0.018821 0.052035" rpy="-1.5708 -1.5708 0"/>
+      <parent link="link5"/>
+      <child link="gripper_link"/>
+      <axis xyz="0.0 -0.0 1.0"/>
+      <!-- Distal servo torque is closer to 20 kg.cm @ 12V ~= 1.96 N.m -->
+      <limit lower="0" upper="1.5" effort="1.0" velocity="2.0"/>
+      <dynamics damping="0.001" friction="0.001"/>
+    </joint>
+
+    <joint name="link5_to_hand_tcp" type="fixed">
+      <origin xyz="0 0 0.115428" rpy="1.5708 -1.5708 0"/>
+      <parent link="link5"/>
+      <child link="hand_tcp"/>
+    </joint>
+
+    <!-- Effort-based transmissions for Gazebo + ros_control.
+         This is preferred for the PX4 joint-simulation path because it avoids
+         the extra gazebo_ros_control inner position loop required by PositionJointInterface. -->
+    <transmission name="base_link_to_link1_tran">
+      <type>transmission_interface/SimpleTransmission</type>
+      <joint name="base_link_to_link1">
+        <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+      </joint>
+      <actuator name="base_link_to_link1_actr">
+        <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+        <mechanicalReduction>1</mechanicalReduction>
+      </actuator>
+    </transmission>
+    <transmission name="link1_to_link2_tran">
+      <type>transmission_interface/SimpleTransmission</type>
+      <joint name="link1_to_link2">
+        <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+      </joint>
+      <actuator name="link1_to_link2_actr">
+        <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+        <mechanicalReduction>1</mechanicalReduction>
+      </actuator>
+    </transmission>
+    <transmission name="link2_to_link3_tran">
+      <type>transmission_interface/SimpleTransmission</type>
+      <joint name="link2_to_link3">
+        <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+      </joint>
+      <actuator name="link2_to_link3_actr">
+        <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+        <mechanicalReduction>1</mechanicalReduction>
+      </actuator>
+    </transmission>
+    <transmission name="link3_to_link4_tran">
+      <type>transmission_interface/SimpleTransmission</type>
+      <joint name="link3_to_link4">
+        <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+      </joint>
+      <actuator name="link3_to_link4_actr">
+        <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+        <mechanicalReduction>1</mechanicalReduction>
+      </actuator>
+    </transmission>
+    <transmission name="link4_to_link5_tran">
+      <type>transmission_interface/SimpleTransmission</type>
+      <joint name="link4_to_link5">
+        <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+      </joint>
+      <actuator name="link4_to_link5_actr">
+        <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+        <mechanicalReduction>1</mechanicalReduction>
+      </actuator>
+    </transmission>
+    <transmission name="link5_to_gripper_link_tran">
+      <type>transmission_interface/SimpleTransmission</type>
+      <joint name="link5_to_gripper_link">
+        <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+      </joint>
+      <actuator name="link5_to_gripper_link_actr">
+        <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+        <mechanicalReduction>1</mechanicalReduction>
+      </actuator>
+    </transmission>
+
+    <xacro:property name="body_color" value="Gazebo/Silver"/>
+    <gazebo reference="roarm_base_link">
+      <material>${body_color}</material>
+      <mu1>0.2</mu1>
+      <mu2>0.2</mu2>
+      <self_collide>false</self_collide>
+      <gravity>true</gravity>
+    </gazebo>
+    <gazebo reference="link1">
+      <material>${body_color}</material>
+      <mu1>0.2</mu1>
+      <mu2>0.2</mu2>
+      <self_collide>false</self_collide>
+    </gazebo>
+    <gazebo reference="link2">
+      <material>${body_color}</material>
+      <mu1>0.2</mu1>
+      <mu2>0.2</mu2>
+      <self_collide>false</self_collide>
+    </gazebo>
+    <gazebo reference="link3">
+      <material>${body_color}</material>
+      <mu1>0.03</mu1>
+      <mu2>0.03</mu2>
+      <self_collide>false</self_collide>
+    </gazebo>
+    <gazebo reference="link4">
+      <material>${body_color}</material>
+      <mu1>0.03</mu1>
+      <mu2>0.03</mu2>
+      <self_collide>false</self_collide>
+    </gazebo>
+    <gazebo reference="link5">
+      <material>${body_color}</material>
+      <mu1>0.03</mu1>
+      <mu2>0.03</mu2>
+      <self_collide>false</self_collide>
+    </gazebo>
+    <gazebo reference="gripper_link">
+      <material>${body_color}</material>
+      <mu1>0.03</mu1>
+      <mu2>0.03</mu2>
+      <self_collide>false</self_collide>
+    </gazebo>
+  </xacro:macro>
+</robot>

@@ -1,0 +1,8 @@
+prefix=/home/demo/test_ws/devel
+
+Name: myam_sys
+Description: Description of myam_sys
+Version: 1.0.0
+Cflags: 
+Libs: -L${prefix}/lib 
+Requires: 

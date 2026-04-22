@@ -1,0 +1,33 @@
+<?xml version="1.0"?>
+<launch>
+  <!--
+    一键：Gazebo + 固定无人机 + 红方块 + MoveIt，并启动自动规划抓取节点。
+    若只需手动调参，请用 gazebo_grasp_red_box.launch，再在终端运行:
+      rosrun myam_sys_moveit gazebo_red_box_grasp.py
+  -->
+  <arg name="add_planning_scene_ground" default="true" doc="与 gazebo_grasp_red_box.launch 一致：规划场景薄地面"/>
+  <include file="$(dirname)/gazebo_grasp_red_box.launch">
+    <arg name="add_planning_scene_ground" value="$(arg add_planning_scene_ground)"/>
+  </include>
+
+  <!-- 预抓取：auto_surface_offsets 默认 true，路点在方块顶面法向（planning_frame +Z）上 -->
+  <node
+    name="gazebo_red_box_grasp"
+    pkg="myam_sys_moveit"
+    type="gazebo_red_box_grasp.py"
+    output="screen"
+    required="false">
+    <!-- <param name="auto_surface_offsets" value="false"/> -->
+    <!-- 指尖低于 TCP 时易「第一次就杵到盒/地」：调 clearance；~position_goal_z_backoff_* 缓解 Unable to sample goal -->
+    <!-- <param name="pregrasp_clearance_above_top_m" value="0.20"/> -->
+    <!-- 分段上抬：勿过大，否则 TCP 超工作空间 → Unable to sample goal；可配 ~pregrasp_ultra_tcp_max_z 钳位 -->
+    <!-- <param name="pregrasp_staged_extra_lift_m" value="0.06"/> -->
+    <!-- <param name="pregrasp_ultra_tcp_max_z" value="0.68"/> -->
+    <!-- <param name="grasp_clearance_above_top_m" value="0.04"/> -->
+    <!-- <param name="slow_approach_delta_z" value="0.05"/> -->
+    <!-- 5DOF+effort：执行超差时可加大 ~execute_max_retries 或略增 link3_to_link4 的 trajectory 容差 -->
+    <!-- <param name="execute_max_retries" value="6"/> -->
+    <!-- <param name="waypoints_pose_fallback" value="true"/> -->
+    <!-- 与 red_grasp_cube_rviz_sync 同时开时勿加第二只盒子：<param name="add_extra_collision_box" value="true"/> -->
+  </node>
+</launch>

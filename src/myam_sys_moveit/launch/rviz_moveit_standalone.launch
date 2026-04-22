@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<!--
+  在仿真栈（sitl_task / move_group / Gazebo）已启动后，另开终端用于 RViz 手动拖动末端：
+
+    source ~/test_ws/devel/setup.bash
+    roslaunch myam_sys_moveit rviz_moveit_standalone.launch
+
+  MotionPlanning 插件：Planning Group 选 arm，拖动 Interactive Marker（橙色目标），Plan → Execute。
+  Fixed Frame 建议选 base_link 或 roarm_base_link（与 TF 树一致）。
+-->
+<launch>
+  <node name="rviz" pkg="rviz" type="rviz"
+        args="-d $(find myam_sys_moveit)/launch/moveit.rviz"
+        output="screen"/>
+</launch>

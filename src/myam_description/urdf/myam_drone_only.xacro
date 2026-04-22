@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 仅六旋翼机身 + D435 + 尾舱电池/IMU，无机械臂；用于与 myam_sys 对照排查卡地是否由臂碰撞引起 -->
+<robot name="myam_drone_only" xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <xacro:include filename="$(find myam_description)/urdf/myam_drone_body.xacro"/>
+  <xacro:myam_drone_body/>
+  <xacro:include filename="$(find myam_description)/xacro/realsense_d435.xacro"/>
+  <xacro:realsense_d435 sensor_name="camera" parent_link="base_link" rate="30">
+    <origin xyz="0.155 -0.005 -0.158" rpy="0 1.5708 0"/>
+  </xacro:realsense_d435>
+  <xacro:include filename="$(find myam_description)/urdf/myam_tail_battery_imu.xacro"/>
+  <xacro:myam_tail_battery_imu/>
+  <!-- 无 arm transmissions，不用 gazebo_ros_control；用 Gazebo 自带插件发布旋翼关节状态 -->
+  <gazebo>
+    <plugin name="gazebo_joint_state_publisher" filename="libgazebo_ros_joint_state_publisher.so">
+      <jointName>rotor_1_joint, rotor_2_joint, rotor_3_joint, rotor_4_joint, rotor_5_joint, rotor_6_joint</jointName>
+      <updateRate>50.0</updateRate>
+    </plugin>
+  </gazebo>
+</robot>

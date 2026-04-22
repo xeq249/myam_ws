@@ -1,0 +1,265 @@
+<?xml version="1.0"?>
+<launch>
+  <!--
+    旋翼关节由 PX4 驱动，不由 MoveIt/ros_control 发布 joint_states（规划组仅为机械臂链）。
+    仅启动 offboard_grasp 节点。完整仿真栈请先启动：
+      roslaunch myam_simulation sitl_task.launch
+    （默认 myuam + myam_grasping.world + MAVROS + MoveIt）
+    再本 launch。
+  -->
+  <arg name="hover_rel_m" default="1.0" doc="相对起飞 local z 的巡航高度（米）"/>
+  <!-- 低空保持：rel + guard 为相对起飞点的总高度，减轻贴台触底后大幅弹起 -->
+  <arg name="low_rel_m" default="0.44" doc="抓取识别阶段相对起飞点基准高度（米）"/>
+  <arg name="low_rel_guard_m" default="0.02" doc="在 low_rel_m 上再加的余量（米），仍触底可 0.08～0.10"/>
+  <!-- 台面在世界 +X：forward_m 为基准前飞；extra 再沿机头前移（够不着台块时略增） -->
+  <arg name="forward_m" default="1.54" doc="机头方向前飞基准距离（米）；仍过头再减 0.03～0.08"/>
+  <arg name="approach_forward_extra_m" default="0.06" doc="机头方向额外前飞（米），与 forward_m 叠加；太近则减或置 0"/>
+  <!-- 前飞水平目标斜坡（秒）：0=瞬时跳变；4～8 可减轻阶跃引起的抬头爬升 -->
+  <arg name="forward_ramp_sec" default="5.0"/>
+  <!-- 起飞后机头应大致朝向台面；仍偏则用 mission_yaw_offset_rad（弧度）微调 -->
+  <arg name="lock_mission_yaw" default="true" doc="true：offboard 全程锁 yaw0，抑制 PX4 缓慢偏航导致相机歪、OMPL 选上翻构型"/>
+  <arg name="mission_yaw_offset_rad" default="0.0" doc="在 yaw0 上加的偏航修正（弧度），例如台面在左侧试 +0.05～+0.15"/>
+  <!--
+    侧向 lat（米）：相对机头前向，把前飞终点沿「右舷 90°」平移（与 offboard_grasp.py 中 lat*s、-lat*c 一致）。
+    台面/蓝块在相机画面左侧（机体整体偏右）→ 应减小 lat 或改为负值（例如 -0.15～-0.45，小步试）。
+    目标在画面右侧则相反（略增 lat）。勿与「蓝块在画面左/右」和「增 lat」记反。
+  -->
+  <arg name="approach_lateral_m" default="-0.15"/>
+  <!-- 规划系 roarm_base_link 下加到视觉质心的平移修正（米），按仿真手眼标定改 -->
+  <arg name="vision_target_offset_x" default="0.0"/>
+  <arg name="vision_target_offset_y" default="0.0"/>
+  <!-- 深度略偏大时可改为 -0.015～-0.03（米）；须对照终端规划系 z 再改 -->
+  <arg name="vision_target_offset_z" default="0.0"/>
+  <!-- 失败后沿机头再靠前：易与台面相对运动、视觉 z 跳变；默认 0，需重试再设 0.04～0.08 -->
+  <arg name="grasp_retry_forward_m" default="0.0"/>
+
+  <arg name="color_topic" default="/camera_realsense/color/image_raw"/>
+  <arg name="depth_topic" default="/camera_realsense/depth/image_raw"/>
+  <arg name="camera_info_topic" default="/camera_realsense/color/camera_info"/>
+
+  <!-- true：并行启动 Gazebo 磁吸伪抓取（须已开 sitl_task + Gazebo）；见 gazebo_fake_blue_attach.launch -->
+  <arg name="use_gazebo_fake_attach" default="false"/>
+  <arg name="fake_attach_skip_distance" default="false"/>
+  <!-- 与伪吸附「开爪近距先吸」联用：建议 0.48～0.55，再到 gripper_close；不用伪吸附保持 0 -->
+  <arg name="gripper_soft_pinch" default="0.0"/>
+
+  <group if="$(arg use_gazebo_fake_attach)">
+    <include file="$(find myam_simulation)/launch/gazebo_fake_blue_attach.launch">
+      <arg name="enable" value="true"/>
+      <arg name="skip_distance_check" value="$(arg fake_attach_skip_distance)"/>
+    </include>
+  </group>
+
+  <node pkg="myam_simulation" type="offboard_grasp.py" name="offboard_grasp" output="screen">
+    <param name="lock_mission_yaw" value="$(arg lock_mission_yaw)"/>
+    <param name="mission_yaw_offset_rad" value="$(arg mission_yaw_offset_rad)"/>
+    <!-- 与 move_group 一致，读合并后的臂+旋翼关节（无 merge 时改回 /joint_states） -->
+    <param name="joint_states_topic" value="/joint_states_merged"/>
+    <param name="hover_rel_m" value="$(arg hover_rel_m)"/>
+    <param name="low_rel_m" value="$(arg low_rel_m)"/>
+    <param name="low_rel_guard_m" value="$(arg low_rel_guard_m)"/>
+    <param name="forward_m" value="$(arg forward_m)"/>
+    <param name="approach_forward_extra_m" value="$(arg approach_forward_extra_m)"/>
+    <param name="forward_ramp_sec" value="$(arg forward_ramp_sec)"/>
+    <param name="approach_lateral_m" value="$(arg approach_lateral_m)"/>
+    <param name="hold_sec" value="1.0"/>
+    <!-- 低空识别前缓降（秒）：越大越慢，减轻起落架砸台面 -->
+    <param name="descend_duration" value="18.0"/>
+    <param name="low_hold_sec" value="2.0"/>
+    <param name="color_topic" value="$(arg color_topic)"/>
+    <param name="depth_topic" value="$(arg depth_topic)"/>
+    <param name="camera_info_topic" value="$(arg camera_info_topic)"/>
+    <param name="auto_arm" value="true"/>
+    <param name="auto_offboard" value="true"/>
+    <param name="offboard_stream_enable" value="true"/>
+    <param name="offboard_stream_hz" value="20.0"/>
+    <!-- 墙钟 sleep：避免 use_sim_time + MoveIt 占 GIL 时 rospy.Rate 停步导致 PX4 No offboard signal -->
+    <param name="offboard_stream_use_wall_clock" value="true"/>
+    <rosparam param="arm_ready_joints">[0.0, -1.57, 2.95, 0.0, 0.0]</rosparam>
+    <rosparam param="arm_ready_joints_fallback">[0.0, -1.57, 2.90, 0.0, 0.0]</rosparam>
+    <!-- 与 offboard_grasp_blue_cube.launch 一致：home/准备段速度与加速度缩放 -->
+    <param name="arm_home_vel_scaling" value="0.08"/>
+    <param name="arm_home_accel_scaling" value="0.08"/>
+    <param name="arm_ready_vel_scaling" value="0.08"/>
+    <param name="arm_ready_accel_scaling" value="0.08"/>
+    <param name="grasp_max_retries" value="2"/>
+    <param name="grasp_retry_forward_m" value="$(arg grasp_retry_forward_m)"/>
+    <!-- 检测阶段朝蓝斑中心微调：多稳几帧、单步略大，减轻「目在画边、规划系 y 大」 -->
+    <!-- 稳更多帧 + 更小 gain/step：减轻「夹爪在块一侧仍开始长折线」→扫落蓝块 -->
+    <param name="detection_stable_frames" value="10"/>
+    <param name="detect_refine_xy_enable" value="true"/>
+    <!-- 微调向量投到 map，与 offboard 位置同系（勿再依赖 roarm_base_link 直接加 x/y） -->
+    <param name="detect_refine_xy_target_frame" value="map"/>
+    <!-- 低空识别：略降增益/步长、略大像素死区、隔帧微调 → 减轻对准过头振荡 -->
+    <param name="detect_refine_xy_gain" value="0.13"/>
+    <param name="detect_refine_xy_max_step" value="0.017"/>
+    <param name="detect_refine_min_pixel_error" value="22.0"/>
+    <param name="detect_refine_max_cumulative_m" value="0.32"/>
+    <param name="detect_refine_xy_stride" value="2"/>
+    <param name="gripper_open_max" value="1.5"/>
+    <!-- URDF：0≈全闭、1.5≈全开。略大于 0 保留指尖余量，减轻方块被挤飞/夹不住（伪吸附时也更稳） -->
+    <param name="gripper_close" value="0.12"/>
+    <param name="gripper_soft_pinch" value="$(arg gripper_soft_pinch)"/>
+    <rosparam param="vision_target_offset" subst_value="true">[$(arg vision_target_offset_x), $(arg vision_target_offset_y), $(arg vision_target_offset_z)]</rosparam>
+    <param name="move_group_wait_for_servers" value="45.0"/>
+    <param name="move_group_reinit_sleep" value="1.0"/>
+    <!-- 视觉 OMPL 段：加长规划时限与尝试次数（move_group 里 ~21s 多为 allowed_planning_time 用尽） -->
+    <param name="vision_ompl_planning_time" value="30.0"/>
+    <param name="vision_ompl_planning_attempts" value="8"/>
+    <!-- 减轻 Gazebo effort 下视觉 Pose 的 TIMED_OUT：再慢可降到 0.05 -->
+    <param name="arm_vel_scaling" value="0.08"/>
+    <param name="arm_accel_scaling" value="0.08"/>
+    <!-- 勿过小：名义关节轨迹过长时 MoveIt 仍可能按默认 duration 监控在 ~20s 判 TIMED_OUT -->
+    <param name="vision_pose_step_vel_scale" value="0.42"/>
+    <param name="vision_min_velocity_scale" value="0.55"/>
+    <param name="vision_cartesian_vel_scale" value="0.48"/>
+    <param name="vision_waypoint_vel_cap" value="0.95"/>
+    <!-- 略放宽末端位置容差；姿态由 PX4/机体负责，MoveIt 以位置为主 -->
+    <param name="vision_goal_position_tolerance" value="0.032"/>
+    <param name="vision_goal_orientation_tolerance" value="0.78"/>
+    <!-- false：staging 后首段折线仍易 OMPL TIMED_OUT（弦长>0.9m）；对准后再改 true -->
+    <param name="vision_joint_staging_enable" value="false"/>
+    <param name="vision_preflight_plan" value="true"/>
+    <!-- 预检：略长于旧版 12s；配合 pose 重试缓解 Unable to sample goal → TIMED_OUT -->
+    <param name="vision_preflight_planning_time" value="18.0"/>
+    <param name="vision_preflight_planning_attempts" value="8"/>
+    <!-- 预检专用宽松容差（在 vision_goal_* 之上取 max） -->
+    <param name="vision_preflight_relaxed_position_tolerance" value="0.10"/>
+    <param name="vision_preflight_relaxed_joint_tolerance" value="0.28"/>
+    <param name="vision_preflight_relaxed_orientation_tolerance" value="1.25"/>
+    <param name="vision_preflight_retry_pose_from_approach" value="true"/>
+    <param name="vision_preflight_retry_pose_retaining_wrist" value="true"/>
+    <!-- 球形工作区：略放大默认半径，减少径向夹紧后 goal 更难采样 -->
+    <param name="vision_workspace_enable" value="true"/>
+    <param name="vision_workspace_radius_max_m" value="0.78"/>
+    <param name="vision_workspace_safety_margin_m" value="0.02"/>
+    <param name="vision_preflight_skip_pose_if_pregrasp_fails" value="true"/>
+    <!-- 关节预伸展：易与视觉目标 z 符号相反、弦长达 ~0.9m→超时；清单建议默认关闭，调好 seed 后再开 -->
+    <param name="vision_reach_seed_enable" value="false"/>
+    <param name="vision_reach_seed_revert_if_worse" value="false"/>
+    <param name="vision_reach_seed_revert_margin_m" value="0.10"/>
+    <param name="vision_reach_seed_vel_scale" value="0.5"/>
+    <param name="vision_reach_seed_accel_scale" value="0.5"/>
+    <rosparam param="vision_reach_seed_joints">[0.0, -0.95, 2.35, -0.4, 0.0]</rosparam>
+    <!-- false=仅位置目标，减轻姿态/奇异导致的难规划；需固定腕角时再设 true -->
+    <param name="vision_cartesian_use_pose" value="false"/>
+    <!-- 通过 dynreconf 反复写 trajectory_execution，避免 RViz 把 execution_duration_monitoring 改回 true -->
+    <param name="vision_fix_trajectory_execution_via_dynreconf" value="true"/>
+    <!-- 再略降：首段大关节变化时少顶机身/起落架 -->
+    <param name="trajectory_execution_velocity_scaling" value="1.65"/>
+    <!-- 纯关节 Home/准备：单独用小倍率，减轻晃动（可调 1.0～2.5） -->
+    <param name="arm_trajectory_execution_velocity_scaling" value="1.5"/>
+    <!-- vision_path_mode：cartesian_execute=笛卡尔（易 fraction=0）；ompl=仅 OMPL 位置目标，不走直线 -->
+    <!-- vision_use_segmented_pose=false：预接近/下落各一次 arm.go，不做折线多段 -->
+    <param name="vision_path_mode" value="ompl"/>
+    <param name="vision_cartesian_eef_step" value="0.062"/>
+    <param name="vision_cartesian_min_fraction" value="0.06"/>
+    <param name="vision_cartesian_keep_orientation" value="false"/>
+    <!-- -1：末端 +Z 与运动方向相反（常见从上向下伸）；仍 fraction=0 时可试 +1 -->
+    <param name="vision_cartesian_approach_axis_sign" value="-1.0"/>
+    <param name="vision_cartesian_dense_waypoints" value="9"/>
+    <!-- 单腿超过此欧氏距则跳过笛卡尔（日志里 ~0.8m 常 fraction=0），避免白等 chunks -->
+    <!-- ≥ 典型预接近跨度 ~0.8m，否则被迫多段 OMPL 易超时 -->
+    <param name="vision_cartesian_skip_if_dist_m" value="0.38"/>
+    <!-- OMPL 名义速度略提高，缩短轨迹时长（配合 MoveIt execution_duration_scaling） -->
+    <param name="vision_ompl_plan_vel_scale" value="0.88"/>
+    <param name="vision_ompl_plan_accel_scale" value="0.88"/>
+    <!-- 略减合并、略加密步长；lead-in：长弦时先插几段近起点微步，首段 OMPL 不必大幅上抬 -->
+    <param name="vision_polyline_coalesce_dist_m" value="0.48"/>
+    <param name="vision_polyline_step_m_long" value="0.062"/>
+    <param name="vision_polyline_long_leg_compress_m" value="0.52"/>
+    <!-- 略小则长腿分段更多、单段更短，减轻「预接近 1/N」规划超时 -->
+    <param name="vision_polyline_long_leg_min_step_m" value="0.078"/>
+    <!-- 长弦时微步首点易 OMPL 30s TIMED_OUT（见 move_group Unable to sample goal）；改 false 走主折线 -->
+    <param name="vision_polyline_lead_in_enable" value="false"/>
+    <param name="vision_polyline_lead_in_min_leg_m" value="0.42"/>
+    <param name="vision_polyline_lead_in_step_m" value="0.018"/>
+    <param name="vision_polyline_lead_in_cap_m" value="0.10"/>
+    <param name="vision_polyline_lead_in_max_frac" value="0.28"/>
+    <param name="vision_polyline_lead_in_max_points" value="8"/>
+    <!-- 关节前插已成功则不再做 2cm 笛卡尔微步（日志里微步1/7 仍易 TIMED_OUT） -->
+    <param name="vision_polyline_skip_cartesian_micro_after_joint" value="true"/>
+    <!-- 长腿先关节小步走向 vision_reach_seed_joints（不必开 vision_reach_seed_enable） -->
+    <!-- 默认关：易把末端摆离蓝块、弦长变大，加重「Unable to sample goal」；调好 seed 后再开 -->
+    <param name="vision_joint_lead_in_enable" value="false"/>
+    <param name="vision_joint_lead_in_min_leg_m" value="0.45"/>
+    <param name="vision_joint_lead_in_steps" value="6"/>
+    <param name="vision_joint_lead_in_total_fraction" value="0.22"/>
+    <!-- false=仅位置 OMPL，长腿常比锁腕更短；若抖动大可改 true -->
+    <param name="vision_ompl_lock_wrist_orientation" value="false"/>
+    <param name="vision_cartesian_avoid_collision" value="false"/>
+    <!-- 笛卡尔模式：1=整条直线一次 execute，段间不停 -->
+    <param name="vision_cartesian_chunks" value="1"/>
+    <param name="vision_log_plan_on_fail" value="true"/>
+    <param name="vision_plan_probe_settle_sec" value="0.55"/>
+    <!-- true：预接近/下落沿直线插多段 OMPL，缩短单次 arm.go 名义时长（减轻 ~0.8m 单段超时） -->
+    <param name="vision_use_segmented_pose" value="true"/>
+    <param name="vision_cartesian_step_m" value="0.08"/>
+    <param name="vision_segment_min_steps" value="5"/>
+    <param name="vision_segment_max_steps" value="16"/>
+    <!-- 预接近 max_segments=2：长弦拆两段，减轻单段 OMPL；下落仍可多段 -->
+    <param name="vision_pregrasp_max_segments" value="2"/>
+    <!-- 预接近 z：仅略高于质心即可；过大则肩肘先大幅上抬（如图）。可与 vision_tcp_extra_z_m 叠加 -->
+    <!-- 略抬高预接近、减弱末段下探：减轻 TCP 顶台面、effort 抖动 -->
+    <rosparam param="vision_pregrasp_delta">[0.0, 0.0, 0.050]</rosparam>
+    <!-- 末段相对质心下探；略加大可提高指尖压在块上的概率（台面碰撞则略减小） -->
+    <rosparam param="vision_grasp_delta">[0.0, 0.0, -0.033]</rosparam>
+    <!-- 指尖相对 TCP 的抬高余量；默认 0.055 与 pregrasp 叠加大→预接近过高 -->
+    <param name="vision_tcp_extra_z_m" value="0.028"/>
+    <!-- 仅下落点额外 z（负=再下探），与 grasp_delta 叠加 -->
+    <param name="vision_grasp_plunge_extra_z_m" value="-0.012"/>
+    <!-- 主链成功后、闭合前：采深度短步修正（建议保持开启） -->
+    <param name="grasp_fin_refine_enable" value="true"/>
+    <!-- 最多微调轮数：过多会延迟闭爪；早停达标后实际不会跑满 -->
+    <param name="grasp_fin_refine_iters" value="2"/>
+    <param name="grasp_fin_refine_settle_sec" value="0.12"/>
+    <param name="grasp_fin_refine_min_disp_m" value="0.004"/>
+    <param name="grasp_fin_refine_max_step_m" value="0.045"/>
+    <param name="grasp_fin_refine_vel_scale" value="0.32"/>
+    <!-- grasp_commit_enable=true 时以下早停由 GRASP_COMMIT 取代；false 时仍用 tcp/像素早停 -->
+    <param name="grasp_fin_refine_early_stop_tcp_m" value="0.038"/>
+    <param name="grasp_fin_refine_early_stop_pixel_px" value="62"/>
+    <!-- GRASP_COMMIT：触发区=位置+姿态(+可选像素)，连续稳定帧后再闭爪；超时强制锁定最近目标 -->
+    <param name="grasp_commit_enable" value="true"/>
+    <param name="grasp_commit_pos_tol_m" value="0.038"/>
+    <!-- 0=不检查姿态；夹爪从上往下抓时 EE z 轴应对齐期望轴（默认 [0,0,-1] 于规划系） -->
+    <param name="grasp_commit_orient_tol_rad" value="0.35"/>
+    <param name="grasp_commit_pixel_tol_px" value="0"/>
+    <param name="grasp_commit_stable_frames" value="3"/>
+    <param name="grasp_commit_refine_timeout_sec" value="12"/>
+    <!-- 略偏「下探」的 staging 构型（相对脚本默认微调 link2/link3/link4）；不适则改回默认 -->
+    <rosparam param="pregrasp_joints">[0.0, -1.02, 2.28, -0.52, 0.0]</rosparam>
+    <param name="tf_refine_target_frame" value="roarm_base_link"/>
+    <param name="min_blob_area" value="18"/>
+    <param name="blue_mask_erode_iters" value="0"/>
+    <param name="blue_mask_dilate_iters" value="2"/>
+    <rosparam param="hsv_blue_lower">[72, 18, 25]</rosparam>
+    <rosparam param="hsv_blue_upper">[138, 255, 255]</rosparam>
+    <!-- 关节角 ≤ 该值视为已闭合（0 附近为全闭）；与 report_grasp_success 判定一致 -->
+    <param name="grasp_joint_closed_threshold" value="0.40"/>
+    <!-- 桌面蓝块在 roarm_base_link 下 z 合理范围；超出则不用视觉点（避免错误深度→TIMED_OUT） -->
+    <param name="vision_reframe_z_min" value="-0.25"/>
+    <!-- 方块被拨落后质心 z 常略抬；略放宽避免立刻丢弃视觉（仍依赖对准，勿过大） -->
+    <param name="vision_reframe_z_max" value="0.70"/>
+    <param name="grasp_ee_to_target_max_m" value="0.058"/>
+    <!-- 规划系 dist 大但画面上 TCP 仍对准检测 uv：true 则与 grasp_ee_to_target_max_m 逻辑或（勿过大 max_px 以免误判） -->
+    <param name="grasp_ee_near_cam_fallback_enable" value="true"/>
+    <param name="grasp_ee_near_cam_fallback_max_px" value="58"/>
+    <!-- TCP 在相机系极近时投影用 z 下限，避免「偏差 nan」丢像素回退 -->
+    <param name="grasp_tcp_proj_min_z_m" value="0.02"/>
+    <!-- myam_grasping.world 内蓝块 bumper→/grasp_cube_contact_bumper；碰爪则结束闭合前微调并允许强制闭爪 -->
+    <param name="grasp_contact_trigger_enable" value="true"/>
+    <param name="grasp_contact_topic" value="/grasp_cube_contact_bumper"/>
+    <!-- 末段失败仍闭爪：TCP 距视觉下落点 ≤ 该值(米)；与下项逻辑或；0=关闭距离判据 -->
+    <param name="force_close_gripper_if_tcp_within_m" value="0.22"/>
+    <!-- 末段失败仍闭爪：画面上 TCP 与稳定检测 uv 像素误差 ≤ 该值；0=关闭像素判据 -->
+    <param name="force_close_gripper_if_pixel_below_px" value="72"/>
+    <!-- true：分步关爪并用 |effort| 近似「触到再夹」；阈值按仿真调 grasp_touch_effort_abs -->
+    <param name="grasp_incremental_close_enable" value="true"/>
+    <param name="grasp_incremental_close_steps" value="10"/>
+    <!-- 仿真 effort 量级因模型而异：夹不住可略降到 1.0；误判提前停夹则略升到 2.0 -->
+    <param name="grasp_touch_effort_abs" value="1.2"/>
+    <param name="camera_depth_max_m" value="1.5"/>
+    <param name="depth_median_radius" value="4"/>
+  </node>
+</launch>

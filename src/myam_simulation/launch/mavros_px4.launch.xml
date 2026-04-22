@@ -1,0 +1,16 @@
+<launch>
+  <arg name="use_sim_time" default="true"/>
+  <param name="/use_sim_time" value="$(arg use_sim_time)"/>
+
+  <arg name="fcu_url" default="udp://:14540@127.0.0.1:14557"/>
+  <arg name="gcs_url" default=""/>
+  <arg name="tgt_system" default="1"/>
+  <arg name="tgt_component" default="1"/>
+
+  <include file="$(find mavros)/launch/px4.launch">
+    <arg name="fcu_url" value="$(arg fcu_url)"/>
+    <arg name="gcs_url" value="$(arg gcs_url)"/>
+    <arg name="tgt_system" value="$(arg tgt_system)"/>
+    <arg name="tgt_component" value="$(arg tgt_component)"/>
+  </include>
+</launch>

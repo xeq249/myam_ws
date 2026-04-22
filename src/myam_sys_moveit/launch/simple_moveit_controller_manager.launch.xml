@@ -1,0 +1,13 @@
+<launch>
+  <!-- Define the MoveIt controller manager plugin to use for trajectory execution -->
+  <param name="moveit_controller_manager" value="moveit_simple_controller_manager/MoveItSimpleControllerManager" />
+
+  <!--
+    MoveIt path only:
+    ros_controllers.yaml is still loaded here for MoveIt/controller-manager metadata.
+    Do not include this file in Gazebo startup, otherwise its arm_controller/gripper_controller
+    gains would override config/gazebo_controllers.yaml.
+  -->
+  <rosparam file="$(find myam_sys_moveit)/config/simple_moveit_controllers.yaml" />
+  <rosparam file="$(find myam_sys_moveit)/config/ros_controllers.yaml" />
+</launch>

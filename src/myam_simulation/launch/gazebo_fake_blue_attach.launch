@@ -1,0 +1,64 @@
+<?xml version="1.0"?>
+<launch>
+  <!--
+    仿真「磁吸」伪抓取：不替代 offboard_grasp。默认仅「夹爪闭合 + 距离」时吸附方块；
+    吸附后每帧锁到 hand_tcp，返航/爬升/降落期间保持夹爪闭合则方块一直跟着飞。
+    可选 attach_while_open_enable:=true：开爪极近也可吸（演示用，默认关）。
+
+    典型三终端（同一 roscore）：
+      1) roslaunch myam_simulation sitl_task.launch
+      2) roslaunch myam_simulation gazebo_fake_blue_attach.launch
+      3) roslaunch myam_simulation offboard_grasp.launch
+
+    若只开 1)+2) 而不开 offboard_grasp：会一直等 offboard_grasp 闭爪后才吸附。
+
+    用法：
+      roslaunch myam_simulation gazebo_fake_blue_attach.launch
+    关闭伪抓取：
+      roslaunch myam_simulation gazebo_fake_blue_attach.launch enable:=false
+
+    演示「只要闭合就夹住」（忽略距离，方块会瞬移到爪尖）：
+      roslaunch myam_simulation gazebo_fake_blue_attach.launch skip_distance_check:=true
+
+    默认 attach_pose_source=tf、attach_tf_frame=hand_tcp：方块贴在规划 TCP（指尖），勿再用 gripper_link（关节在腕部，方块会像贴在 link5 侧）。
+    微调指尖相对位置：改 offset_*_m（在 hand_tcp 坐标系下）。
+
+    若要坚持旧行为（按 Gazebo link 吸附）：
+      attach_pose_source:=link_states
+  -->
+  <arg name="enable" default="true"/>
+  <arg name="skip_distance_check" default="false"/>
+  <arg name="joint_states_topic" default="/joint_states_merged"/>
+  <arg name="arm_model_name" default="myuam"/>
+  <arg name="attach_pose_source" default="tf"/>
+  <arg name="attach_tf_frame" default="hand_tcp"/>
+  <arg name="tf_parent_frame" default="map"/>
+  <arg name="attach_link_name" default="gripper_link"/>
+  <arg name="cube_model_name" default="grasp_target_cube"/>
+  <arg name="max_attach_dist_m" default="0.22"/>
+  <arg name="attach_while_open_enable" default="false"/>
+  <arg name="gripper_open_min_for_proximity_attach" default="0.58"/>
+  <arg name="max_attach_dist_open_m" default="0.13"/>
+  <arg name="offset_x_m" default="0.0"/>
+  <arg name="offset_y_m" default="0.0"/>
+  <arg name="offset_z_m" default="0.0"/>
+
+  <node pkg="myam_simulation" type="gazebo_fake_blue_attach.py" name="gazebo_fake_blue_attach" output="screen">
+    <param name="enable" value="$(arg enable)"/>
+    <param name="skip_distance_check" value="$(arg skip_distance_check)"/>
+    <param name="joint_states_topic" value="$(arg joint_states_topic)"/>
+    <param name="arm_model_name" value="$(arg arm_model_name)"/>
+    <param name="attach_pose_source" value="$(arg attach_pose_source)"/>
+    <param name="attach_tf_frame" value="$(arg attach_tf_frame)"/>
+    <param name="tf_parent_frame" value="$(arg tf_parent_frame)"/>
+    <param name="attach_link_name" value="$(arg attach_link_name)"/>
+    <param name="cube_model_name" value="$(arg cube_model_name)"/>
+    <param name="max_attach_dist_m" value="$(arg max_attach_dist_m)"/>
+    <param name="attach_while_open_enable" value="$(arg attach_while_open_enable)"/>
+    <param name="gripper_open_min_for_proximity_attach" value="$(arg gripper_open_min_for_proximity_attach)"/>
+    <param name="max_attach_dist_open_m" value="$(arg max_attach_dist_open_m)"/>
+    <param name="offset_x_m" value="$(arg offset_x_m)"/>
+    <param name="offset_y_m" value="$(arg offset_y_m)"/>
+    <param name="offset_z_m" value="$(arg offset_z_m)"/>
+  </node>
+</launch>

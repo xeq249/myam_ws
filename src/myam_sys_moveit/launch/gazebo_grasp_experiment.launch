@@ -1,0 +1,57 @@
+<?xml version="1.0"?>
+<launch>
+  <!--
+    面向“先稳定抓到”的 Gazebo 抓取实验。
+    设计原则：
+    1. 机体固定在空中，仅验证机械臂+夹爪抓取链路；
+    2. MoveIt 中保留方块和局部地面；
+    3. 抓取前先走到 arm/pregrasp 命名位姿，减小随机初态差异；
+    4. 末段优先笛卡尔直线下落，便于贴近方块顶面抓取。
+  -->
+
+  <arg name="pipeline" default="ompl"/>
+  <arg name="gazebo_gui" default="true"/>
+  <arg name="cube_x" default="0.22"/>
+  <arg name="cube_y" default="0.00"/>
+  <arg name="cube_z" default="0.025"/>
+  <arg name="fixed_world_z" default="0.70"/>
+  <arg name="add_planning_scene_ground" default="true"/>
+
+  <include file="$(dirname)/gazebo_grasp_red_box.launch">
+    <arg name="pipeline" value="$(arg pipeline)"/>
+    <arg name="gazebo_gui" value="$(arg gazebo_gui)"/>
+    <arg name="fixed_world_z" value="$(arg fixed_world_z)"/>
+    <arg name="cube_x" value="$(arg cube_x)"/>
+    <arg name="cube_y" value="$(arg cube_y)"/>
+    <arg name="cube_z" value="$(arg cube_z)"/>
+    <arg name="add_planning_scene_ground" value="$(arg add_planning_scene_ground)"/>
+  </include>
+
+  <node
+    name="gazebo_red_box_grasp_experiment"
+    pkg="myam_sys_moveit"
+    type="gazebo_red_box_grasp.py"
+    output="screen"
+    required="false">
+    <param name="planning_frame" value="roarm_base_link"/>
+    <param name="gripper_open" value="1.5"/>
+    <param name="gripper_close" value="0.0"/>
+    <param name="use_named_pregrasp" value="true"/>
+    <param name="pregrasp_named_target" value="pregrasp"/>
+    <param name="pregrasp_clearance_above_top_m" value="0.10"/>
+    <param name="grasp_clearance_above_top_m" value="0.030"/>
+    <param name="grasp_extra_z_for_finger_length_m" value="0.060"/>
+    <param name="slow_approach_delta_z" value="0.040"/>
+    <param name="arm_vel_scaling" value="0.12"/>
+    <param name="arm_accel_scaling" value="0.10"/>
+    <param name="execute_max_retries" value="5"/>
+    <param name="cartesian_final_approach" value="true"/>
+    <param name="cartesian_eef_step" value="0.008"/>
+    <param name="cartesian_min_fraction" value="0.90"/>
+    <param name="joint_template_fallback" value="true"/>
+    <rosparam param="fallback_pregrasp_joints">[0.0, -1.10, 1.70, -0.25, 0.0]</rosparam>
+    <rosparam param="fallback_grasp_joints">[0.0, -1.45, 2.10, -0.35, 0.0]</rosparam>
+    <rosparam param="fallback_retreat_joints">[0.0, -0.90, 1.20, -0.20, 0.0]</rosparam>
+    <rosparam param="grasp_xy_retry_offsets">[[0.0, 0.0], [0.006, 0.0], [-0.006, 0.0], [0.0, 0.006], [0.0, -0.006]]</rosparam>
+  </node>
+</launch>

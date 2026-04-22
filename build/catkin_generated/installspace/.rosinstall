@@ -1,0 +1,2 @@
+- setup-file:
+    local-name: /home/demo/test_ws/install/setup.sh

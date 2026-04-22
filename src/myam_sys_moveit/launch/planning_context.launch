@@ -1,0 +1,26 @@
+<launch>
+  <!-- By default we do not overwrite the URDF. Change the following to true to change the default behavior -->
+  <arg name="load_robot_description" default="false"/>
+
+  <!-- The name of the parameter under which the URDF is loaded -->
+  <arg name="robot_description" default="robot_description"/>
+
+  <!-- Load universal robot description format (URDF) -->
+  <param if="$(arg load_robot_description)" name="$(arg robot_description)" command="xacro  '$(find myam_description)/urdf/myam_sys.xacro'"/>
+
+  <!-- 语义与规划补充：路径相对本 launch，确保始终读源码树 config（devel/share 里同名文件曾为 MoveIt 向导遗留副本） -->
+  <param name="$(arg robot_description)_semantic" textfile="$(dirname)/../config/myam_sys.srdf" />
+
+  <!-- Load updated joint limits (override information from URDF) -->
+  <group ns="$(arg robot_description)_planning">
+    <rosparam command="load" file="$(dirname)/../config/joint_limits.yaml"/>
+    <rosparam command="load" file="$(dirname)/../config/cartesian_limits.yaml"/>
+  </group>
+
+  <!-- Load default settings for kinematics; these settings are overridden by settings in a node's namespace -->
+  <group ns="$(arg robot_description)_kinematics">
+    <rosparam command="load" file="$(dirname)/../config/kinematics.yaml"/>
+
+  </group>
+
+</launch>

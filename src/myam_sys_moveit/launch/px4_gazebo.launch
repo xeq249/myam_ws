@@ -1,0 +1,13 @@
+<launch>
+  <arg name="px4_dir" default="/home/demo/PX4-Autopilot"/>
+  <arg name="model" default="myuam"/>
+  <arg name="world" default="none"/>
+  <param name="/use_sim_time" value="true"/>
+
+  <node
+    name="px4_sitl_gazebo"
+    pkg="myam_sys_moveit"
+    type="start_px4_sitl_gazebo.sh"
+    output="screen"
+    args="$(arg model) $(arg world) $(arg px4_dir)"/>
+</launch>

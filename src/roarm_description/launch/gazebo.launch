@@ -1,0 +1,42 @@
+<launch>
+  <arg name="model" default="$(find roarm_description)/urdf/roarm_m3/roarm_m3.xacro"/>
+  <arg name="paused" default="false"/>
+  <arg name="use_sim_time" default="true"/>
+  <arg name="gui" default="true"/>
+  <arg name="headless" default="false"/>
+  <arg name="debug" default="false"/>
+  <arg name="verbose" default="false"/>
+  <arg name="world_name" default="worlds/empty.world"/>
+  <arg name="rviz" default="false"/>
+  <arg name="rviz_config" default="$(find roarm_description)/config/roarm_m3.rviz"/>
+
+  <include file="$(find gazebo_ros)/launch/empty_world.launch">
+    <arg name="paused" value="$(arg paused)"/>
+    <arg name="use_sim_time" value="$(arg use_sim_time)"/>
+    <arg name="gui" value="$(arg gui)"/>
+    <arg name="headless" value="$(arg headless)"/>
+    <arg name="debug" value="$(arg debug)"/>
+    <arg name="verbose" value="$(arg verbose)"/>
+    <arg name="world_name" value="$(arg world_name)"/>
+  </include>
+
+  <param name="robot_description" command="$(find xacro)/xacro $(arg model)"/>
+
+  <node name="spawn_roarm" pkg="gazebo_ros" type="spawn_model" output="screen"
+        args="-urdf -param robot_description -model roarm_m3 -z 0.02"/>
+
+  <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher">
+    <param name="use_sim_time" value="$(arg use_sim_time)"/>
+  </node>
+
+  <rosparam file="$(find roarm_description)/config/gazebo_ros_control.yaml" command="load"/>
+  <node name="controller_spawner" pkg="controller_manager" type="spawner" respawn="false"
+        output="screen"
+        args="joint_state_controller arm_controller gripper_controller"/>
+  <!-- 臂与夹爪分控制器：单点轨迹伺服到 hold_positions / hold_gripper_positions -->
+  <node name="send_arm_hold_traj" pkg="roarm_description" type="send_arm_hold_traj.py" output="screen"/>
+
+  <group if="$(arg rviz)">
+    <node name="rviz" pkg="rviz" type="rviz" args="-d $(arg rviz_config)" required="false"/>
+  </group>
+</launch>

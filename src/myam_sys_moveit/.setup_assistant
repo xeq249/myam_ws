@@ -1,0 +1,11 @@
+moveit_setup_assistant_config:
+  URDF:
+    package: myam_description
+    relative_path: urdf/myam_sys.xacro
+    xacro_args: ""
+  SRDF:
+    relative_path: config/myam_sys.srdf
+  CONFIG:
+    author_name: J.C
+    author_email: xeq249@mail.com
+    generated_timestamp: 1775652328

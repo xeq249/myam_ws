@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<!--
+  用 Gazebo /gazebo/link_states 发布 map→base_link，使 RViz 机体高度与仿真一致。
+  与 mavros_bridge 中 local_position/tf/send=false 配合使用（见 sitl_ground_arm.launch）。
+-->
+<launch>
+  <arg name="model_name" default="myuam"/>
+  <arg name="parent_frame" default="map"/>
+  <arg name="child_frame" default="base_link"/>
+
+  <node pkg="myam_simulation" type="gazebo_truth_body_tf.py" name="gazebo_truth_body_tf" output="screen">
+    <param name="model_name" value="$(arg model_name)"/>
+    <param name="parent_frame" value="$(arg parent_frame)"/>
+    <param name="child_frame" value="$(arg child_frame)"/>
+  </node>
+</launch>
