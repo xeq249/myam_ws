@@ -21,7 +21,8 @@
       roslaunch myam_simulation gazebo_fake_blue_attach.launch skip_distance_check:=true
 
     默认 attach_pose_source=tf、attach_tf_frame=hand_tcp：方块贴在规划 TCP（指尖），勿再用 gripper_link（关节在腕部，方块会像贴在 link5 侧）。
-    微调指尖相对位置：改 offset_*_m（在 hand_tcp 坐标系下）。
+    微调指尖相对位置：改 offset_*_m（在 hand_tcp / 参考连杆坐标系下）。
+    抖动/崩溃时可：降低 rate_hz；开启 attach_soft_physics_on_attach；确认 attach_reference_link 与 Gazebo 连杆一致。
 
     若要坚持旧行为（按 Gazebo link 吸附）：
       attach_pose_source:=link_states
@@ -39,6 +40,16 @@
   <arg name="attach_while_open_enable" default="false"/>
   <arg name="gripper_open_min_for_proximity_attach" default="0.58"/>
   <arg name="max_attach_dist_open_m" default="0.13"/>
+  <!-- 与脚本默认一致：仅闭爪后吸附；返航保持 jp<closed 则持续 set_model_state 跟随 -->
+  <arg name="gripper_closed_below" default="0.45"/>
+  <arg name="gripper_open_above" default="0.62"/>
+  <arg name="rate_hz" default="60.0"/>
+  <arg name="detach_open_debounce_sec" default="0.35"/>
+  <!-- 相对连杆吸附 + 软化方块动力学，减轻穿透抖动与 gzserver/Ogre 崩溃 -->
+  <arg name="attach_use_reference_frame" default="true"/>
+  <arg name="attach_reference_link" default=""/>
+  <arg name="attach_soft_physics_on_attach" default="true"/>
+  <arg name="attach_soft_mass_scale" default="0.06"/>
   <arg name="offset_x_m" default="0.0"/>
   <arg name="offset_y_m" default="0.0"/>
   <arg name="offset_z_m" default="0.0"/>
@@ -57,6 +68,14 @@
     <param name="attach_while_open_enable" value="$(arg attach_while_open_enable)"/>
     <param name="gripper_open_min_for_proximity_attach" value="$(arg gripper_open_min_for_proximity_attach)"/>
     <param name="max_attach_dist_open_m" value="$(arg max_attach_dist_open_m)"/>
+    <param name="gripper_closed_below" value="$(arg gripper_closed_below)"/>
+    <param name="gripper_open_above" value="$(arg gripper_open_above)"/>
+    <param name="rate_hz" value="$(arg rate_hz)"/>
+    <param name="detach_open_debounce_sec" value="$(arg detach_open_debounce_sec)"/>
+    <param name="attach_use_reference_frame" value="$(arg attach_use_reference_frame)"/>
+    <param name="attach_reference_link" value="$(arg attach_reference_link)"/>
+    <param name="attach_soft_physics_on_attach" value="$(arg attach_soft_physics_on_attach)"/>
+    <param name="attach_soft_mass_scale" value="$(arg attach_soft_mass_scale)"/>
     <param name="offset_x_m" value="$(arg offset_x_m)"/>
     <param name="offset_y_m" value="$(arg offset_y_m)"/>
     <param name="offset_z_m" value="$(arg offset_z_m)"/>

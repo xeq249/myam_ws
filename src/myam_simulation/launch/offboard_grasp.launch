@@ -24,7 +24,7 @@
     台面/蓝块在相机画面左侧（机体整体偏右）→ 应减小 lat 或改为负值（例如 -0.15～-0.45，小步试）。
     目标在画面右侧则相反（略增 lat）。勿与「蓝块在画面左/右」和「增 lat」记反。
   -->
-  <arg name="approach_lateral_m" default="-0.15"/>
+  <arg name="approach_lateral_m" default="0.10"/>
   <!-- 规划系 roarm_base_link 下加到视觉质心的平移修正（米），按仿真手眼标定改 -->
   <arg name="vision_target_offset_x" default="0.0"/>
   <arg name="vision_target_offset_y" default="0.0"/>
@@ -40,13 +40,26 @@
   <!-- true：并行启动 Gazebo 磁吸伪抓取（须已开 sitl_task + Gazebo）；见 gazebo_fake_blue_attach.launch -->
   <arg name="use_gazebo_fake_attach" default="false"/>
   <arg name="fake_attach_skip_distance" default="false"/>
-  <!-- 与伪吸附「开爪近距先吸」联用：建议 0.48～0.55，再到 gripper_close；不用伪吸附保持 0 -->
+  <!-- 非空则覆盖伪吸附 Gazebo reference_frame（空=用 myuam::hand_tcp，不认时可设 myuam::gripper_link） -->
+  <arg name="fake_attach_reference_link" default=""/>
+  <!-- 可选：闭爪前先经过中间角再 gripper_close；伪吸附仅需「真正闭爪」触发，通常保持 0 -->
   <arg name="gripper_soft_pinch" default="0.0"/>
 
   <group if="$(arg use_gazebo_fake_attach)">
     <include file="$(find myam_simulation)/launch/gazebo_fake_blue_attach.launch">
       <arg name="enable" value="true"/>
       <arg name="skip_distance_check" value="$(arg fake_attach_skip_distance)"/>
+      <!-- 仅闭爪后吸附；勿开 attach_while_open_enable（开爪近距吸与「最初」行为不符） -->
+      <arg name="attach_while_open_enable" value="false"/>
+      <arg name="gripper_closed_below" value="0.45"/>
+      <arg name="gripper_open_above" value="0.63"/>
+      <!-- reference_frame 吸附后不必过高频率；过高易与接触约束打架 -->
+      <arg name="rate_hz" value="50.0"/>
+      <arg name="detach_open_debounce_sec" value="0.35"/>
+      <arg name="attach_use_reference_frame" value="true"/>
+      <arg name="attach_soft_physics_on_attach" value="true"/>
+      <arg name="attach_soft_mass_scale" value="0.06"/>
+      <arg name="attach_reference_link" value="$(arg fake_attach_reference_link)"/>
     </include>
   </group>
 
@@ -235,8 +248,10 @@
     <param name="blue_mask_dilate_iters" value="2"/>
     <rosparam param="hsv_blue_lower">[72, 18, 25]</rosparam>
     <rosparam param="hsv_blue_upper">[138, 255, 255]</rosparam>
-    <!-- 关节角 ≤ 该值视为已闭合（0 附近为全闭）；与 report_grasp_success 判定一致 -->
+    <!-- 关节角 ≤ 该值视为已闭合（0 附近为全闭）；与 report_grasp_success / 爪闭仍返航判定一致 -->
     <param name="grasp_joint_closed_threshold" value="0.40"/>
+    <!-- true：抓取段 MoveIt 失败但若爪已闭合仍进入收臂返航（防伪吸附方块掉落后反复回 detect 重抓） -->
+    <param name="grasp_proceed_if_gripper_closed" value="true"/>
     <!-- 桌面蓝块在 roarm_base_link 下 z 合理范围；超出则不用视觉点（避免错误深度→TIMED_OUT） -->
     <param name="vision_reframe_z_min" value="-0.25"/>
     <!-- 方块被拨落后质心 z 常略抬；略放宽避免立刻丢弃视觉（仍依赖对准，勿过大） -->
@@ -250,6 +265,10 @@
     <!-- myam_grasping.world 内蓝块 bumper→/grasp_cube_contact_bumper；碰爪则结束闭合前微调并允许强制闭爪 -->
     <param name="grasp_contact_trigger_enable" value="true"/>
     <param name="grasp_contact_topic" value="/grasp_cube_contact_bumper"/>
+    <!-- 台面 bumper：臂硬碰 grasp_table 后收至 pregrasp 并中止本帧抓取、不再前飞重试（见 worlds/myam_grasping.world） -->
+    <param name="table_contact_retract_enable" value="true"/>
+    <param name="table_contact_topic" value="/grasp_table_contact_bumper"/>
+    <param name="table_contact_block_force_close" value="true"/>
     <!-- 末段失败仍闭爪：TCP 距视觉下落点 ≤ 该值(米)；与下项逻辑或；0=关闭距离判据 -->
     <param name="force_close_gripper_if_tcp_within_m" value="0.22"/>
     <!-- 末段失败仍闭爪：画面上 TCP 与稳定检测 uv 像素误差 ≤ 该值；0=关闭像素判据 -->

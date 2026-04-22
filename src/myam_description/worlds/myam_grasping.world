@@ -66,6 +66,21 @@
             </script>
           </material>
         </visual>
+        <!-- 臂↔台面碰撞：offboard_grasp 订阅 /grasp_table_contact_bumper，顶台面后收臂中止抓取 -->
+        <sensor name="table_contact_bumper" type="contact">
+          <always_on>true</always_on>
+          <update_rate>100</update_rate>
+          <visualize>false</visualize>
+          <contact>
+            <collision>collision</collision>
+          </contact>
+          <plugin name="gazebo_ros_table_bumper" filename="libgazebo_ros_bumper.so">
+            <alwaysOn>true</alwaysOn>
+            <updateRate>100</updateRate>
+            <bumperTopicName>grasp_table_contact_bumper</bumperTopicName>
+            <frameName>table_link</frameName>
+          </plugin>
+        </sensor>
       </link>
     </model>
 
@@ -91,12 +106,13 @@
             </box>
           </geometry>
           <surface>
+            <!-- 软化接触：减轻伪吸附 set_model_state 与穿透修正对冲导致的抖动/Ogre 数值崩溃 -->
             <contact>
               <ode>
-                <kp>1e5</kp>
-                <kd>100</kd>
-                <max_vel>10.0</max_vel>
-                <min_depth>0.001</min_depth>
+                <kp>8000</kp>
+                <kd>35</kd>
+                <max_vel>3.0</max_vel>
+                <min_depth>0.002</min_depth>
               </ode>
             </contact>
             <friction>

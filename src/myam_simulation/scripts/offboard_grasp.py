@@ -288,6 +288,10 @@ class GraspMission(object):
         self.grasp_joint_closed_threshold = float(
             rospy.get_param("~grasp_joint_closed_threshold", 0.35)
         )
+        # true：exec_arm_sequence 报 False 但夹爪已闭（如假磁吸后块掉、仍应去收臂返航）时仍进入 PH_ARM_HOME，避免回 detect 死抓
+        self.grasp_proceed_if_gripper_closed = bool(
+            rospy.get_param("~grasp_proceed_if_gripper_closed", True)
+        )
         # 规划系下桌面目标大致高度带；超出则丢弃视觉点（避免 z≈1m 等错误深度导致 TIMED_OUT）
         self.vision_reframe_z_min = float(rospy.get_param("~vision_reframe_z_min", -0.25))
         self.vision_reframe_z_max = float(rospy.get_param("~vision_reframe_z_max", 0.62))
@@ -324,6 +328,36 @@ class GraspMission(object):
             "~grasp_contact_cube_name_substrings",
             ["cube_link", "grasp_target_cube"],
         )
+        # myam_grasping.world 台面 bumper → ContactsState：臂顶台面后收臂，避免为抓取一直硬顶
+        self.table_contact_retract_enable = bool(
+            rospy.get_param("~table_contact_retract_enable", True)
+        )
+        self.table_contact_topic = rospy.get_param(
+            "~table_contact_topic", "/grasp_table_contact_bumper"
+        ).strip()
+        self._table_contact_arm_kws = rospy.get_param(
+            "~table_contact_arm_name_substrings",
+            [
+                "roarm",
+                "gripper_link",
+                "hand_tcp",
+                "link5_to_gripper",
+                "::link1::",
+                "::link2::",
+                "::link3::",
+                "::link4::",
+                "::link5::",
+            ],
+        )
+        self._table_contact_table_kws = rospy.get_param(
+            "~table_contact_table_name_substrings",
+            ["grasp_table", "table_link"],
+        )
+        self.table_contact_block_force_close = bool(
+            rospy.get_param("~table_contact_block_force_close", True)
+        )
+        self._table_contact_seen = False
+        self._grasp_table_contact_abort_mission = False
         # TCP 在相机光学系 z 很小时投影病态；用下限代替直接放弃，避免日志 nan、丢失像素回退
         self.grasp_tcp_proj_min_z_m = float(
             rospy.get_param("~grasp_tcp_proj_min_z_m", 0.02)
@@ -787,6 +821,17 @@ class GraspMission(object):
                 "[NODE] Gazebo 爪-块碰撞→收爪 topic=%s | EN: bumper contact",
                 self.grasp_contact_topic,
             )
+        if ContactsState is not None and self.table_contact_retract_enable:
+            rospy.Subscriber(
+                self.table_contact_topic,
+                ContactsState,
+                self._cb_table_contact,
+                queue_size=10,
+            )
+            rospy.loginfo(
+                "[NODE] Gazebo 臂↔台面碰撞→收臂中止抓取 topic=%s | EN: table bumper",
+                self.table_contact_topic,
+            )
 
         self.sp_pub = rospy.Publisher(
             "/mavros/setpoint_raw/local", PositionTarget, queue_size=10
@@ -863,6 +908,75 @@ class GraspMission(object):
             n1, self._grasp_contact_cube_kws
         )
         return arm_cube or cube_arm
+
+    def _cb_table_contact(self, msg):
+        """台面 bumper：臂 link 与 grasp_table 碰撞时置位。"""
+        if not self.table_contact_retract_enable:
+            return
+        try:
+            for st in msg.states:
+                if self._table_contact_pair_is_target(
+                    st.collision1_name, st.collision2_name
+                ):
+                    if not self._table_contact_seen:
+                        rospy.loginfo(
+                            "[TABLE] 臂↔台面碰撞 %s × %s | EN: table bump",
+                            st.collision1_name,
+                            st.collision2_name,
+                        )
+                    self._table_contact_seen = True
+                    return
+        except Exception:
+            pass
+
+    def _table_contact_pair_is_target(self, n1, n2):
+        n1 = (n1 or "").lower()
+        n2 = (n2 or "").lower()
+
+        def has_kw(s, kws):
+            return any(k.lower() in s for k in kws)
+
+        if not (
+            has_kw(n1, self._table_contact_table_kws)
+            or has_kw(n2, self._table_contact_table_kws)
+        ):
+            return False
+        return has_kw(n1, self._table_contact_arm_kws) or has_kw(
+            n2, self._table_contact_arm_kws
+        )
+
+    def _handle_table_contact_retract(self, arm):
+        """停止当前轨迹并收至 pregrasp，置位本任务中止抓取（不再重试顶台面）。"""
+        try:
+            arm.stop()
+        except Exception:
+            pass
+        rospy.logwarn(
+            "[TABLE] 收臂(pregrasp) 中止下探 | EN: retract from table hit"
+        )
+        self._grasp_table_contact_abort_mission = True
+        self._table_contact_seen = False
+        try:
+            arm.clear_pose_targets()
+        except MoveItCommanderException:
+            pass
+        vs = max(0.12, min(0.45, float(self.arm_ready_vel_scaling)))
+        ac = max(0.12, min(0.45, float(self.arm_ready_accel_scaling)))
+        self.configure_arm_move_group(arm, vel_scaling=vs, accel_scaling=ac)
+        arm.set_joint_value_target([float(x) for x in self.pregrasp_joints])
+        try:
+            arm.go(wait=True)
+        except MoveItCommanderException:
+            pass
+
+    def _consume_table_contact_retract(self, arm):
+        """若本周期检测到台面碰撞则收臂并返回 True（调用方应中止当前运动链）。"""
+        if not self.table_contact_retract_enable:
+            return False
+        if not getattr(self, "_table_contact_seen", False):
+            return False
+        self._handle_table_contact_retract(arm)
+        return True
 
     def _cb_joint_states(self, msg):
         try:
@@ -1845,7 +1959,17 @@ class GraspMission(object):
         刷新深度并小步修正；由 grasp_commit_* 做触发区+连续帧+超时；碰撞 bumper 可打断。
         """
         if not self.grasp_fin_refine_enable:
+            if self.table_contact_retract_enable and getattr(
+                self, "_table_contact_seen", False
+            ):
+                self._handle_table_contact_retract(arm)
+                return False
             return True
+        if self.table_contact_retract_enable and getattr(
+            self, "_table_contact_seen", False
+        ):
+            self._handle_table_contact_retract(arm)
+            return False
         if (
             self.grasp_contact_trigger_enable
             and getattr(self, "_grasp_contact_seen", False)
@@ -1868,6 +1992,11 @@ class GraspMission(object):
         self._refine_last_tgt = None
 
         for k in range(max(0, int(self.grasp_fin_refine_iters))):
+            if self.table_contact_retract_enable and getattr(
+                self, "_table_contact_seen", False
+            ):
+                self._handle_table_contact_retract(arm)
+                return False
             if (
                 self.grasp_contact_trigger_enable
                 and getattr(self, "_grasp_contact_seen", False)
@@ -2296,6 +2425,8 @@ class GraspMission(object):
                 pass
             arm.set_joint_value_target(qi)
             lab = "%s 关节插%d/%d" % (label, i, n)
+            if self._consume_table_contact_retract(arm):
+                return False
             if not arm.go(wait=True):
                 rospy.logwarn(
                     "[ARM] %s 失败 | EN: joint waypoint failed",
@@ -2452,6 +2583,8 @@ class GraspMission(object):
             rospy.logwarn(
                 "[ARM] reach_seed 未完全到位，继续视觉 | EN: seed incomplete, continue"
             )
+        if self._consume_table_contact_retract(arm):
+            return False
         return True
 
     @staticmethod
@@ -2620,6 +2753,8 @@ class GraspMission(object):
             t = i / float(n)
             pt = (p0a + (p1a - p0a) * t).tolist()
             lab = "%s %d/%d" % (label, i, n)
+            if self._consume_table_contact_retract(arm):
+                return False
             if not self._execute_cartesian_line_to_xyz(arm, pt, lab):
                 return False
         return True
@@ -2664,6 +2799,8 @@ class GraspMission(object):
         vmin = max(0.08, min(0.95, float(self.vision_min_velocity_scale)))
         vcap = max(0.2, min(1.0, float(self.vision_waypoint_vel_cap)))
         for att in range(n_att):
+            if self._consume_table_contact_retract(arm):
+                return False
             if att < 2:
                 vs = min(vcap, base_vs * (1.45 ** att))
             else:
@@ -2784,6 +2921,8 @@ class GraspMission(object):
         return gripper.go(wait=True)
 
     def _joint_pregrasp_grasp(self, arm, gripper):
+        if self._consume_table_contact_retract(arm):
+            return False
         if not self._open_gripper_wide(gripper):
             rospy.logerr(
                 "[GRIP] 爪全开失败 | EN: gripper open-wide failed"
@@ -2792,9 +2931,13 @@ class GraspMission(object):
         arm.clear_pose_targets()
         self.configure_arm_move_group(arm)
         arm.set_joint_value_target([float(x) for x in self.pregrasp_joints])
+        if self._consume_table_contact_retract(arm):
+            return False
         if not arm.go(wait=True):
             return False
         arm.set_joint_value_target([float(x) for x in self.grasp_joints])
+        if self._consume_table_contact_retract(arm):
+            return False
         if not arm.go(wait=True):
             return False
         return True
@@ -2805,6 +2948,8 @@ class GraspMission(object):
         if arm is None or gripper is None:
             return False
         self._grasp_contact_seen = False
+        self._table_contact_seen = False
+        self._grasp_table_contact_abort_mission = False
         self._refine_stable_ctr = 0
         self.configure_arm_move_group(arm)
         gripper.set_max_velocity_scaling_factor(0.4)
@@ -2882,7 +3027,9 @@ class GraspMission(object):
                             2.0,
                             "[TF] seed 前无 TCP | EN: no TCP before seed",
                         )
-                self._go_vision_reach_seed(arm)
+                if not self._go_vision_reach_seed(arm):
+                    self._reset_vision_execution_tolerances(arm)
+                    return False
                 self._apply_vision_execution_tolerances(arm)
                 self.configure_arm_move_group(
                     arm,
@@ -3016,9 +3163,13 @@ class GraspMission(object):
                             arm, p_fin, vs0
                         )
                     if ok_vis:
-                        self._grasp_finishing_refine(arm, vs0)
+                        if not self._grasp_finishing_refine(arm, vs0):
+                            ok_vis = False
 
                 if not ok_vis:
+                    if getattr(self, "_grasp_table_contact_abort_mission", False):
+                        self._reset_vision_execution_tolerances(arm)
+                        return False
                     rospy.logwarn(
                         "[VISION] 末端链失败→关节抓取 | EN: pose chain fail, joint grasp"
                     )
@@ -3047,6 +3198,9 @@ class GraspMission(object):
                     ok_vis = True
                     self._last_exec_p_fin = None
             except MoveItCommanderException:
+                if getattr(self, "_grasp_table_contact_abort_mission", False):
+                    self._reset_vision_execution_tolerances(arm)
+                    return False
                 if not self._joint_pregrasp_grasp(arm, gripper):
                     ok_fc, fc_why, fc_met = self._force_close_grasp_allowed(
                         arm, p_fin
@@ -3081,9 +3235,14 @@ class GraspMission(object):
                 return False
 
         if not motion_ok:
-            rospy.logerr(
-                "[GRASP] 手臂未到位，跳过闭爪 | EN: arm not settled, skip close"
-            )
+            if getattr(self, "_grasp_table_contact_abort_mission", False):
+                rospy.logwarn(
+                    "[GRASP] 台面碰撞已收臂→跳过闭爪 | EN: table hit skip close"
+                )
+            else:
+                rospy.logerr(
+                    "[GRASP] 手臂未到位，跳过闭爪 | EN: arm not settled, skip close"
+                )
             return False
 
         pinch = float(self.gripper_soft_pinch)
@@ -3241,6 +3400,10 @@ class GraspMission(object):
         末段执行失败时是否仍允许 MoveIt 闭爪：TCP 距下落点足够近，或画面像素对准足够好（逻辑或）。
         返回 (ok, reason, metric)；reason 为 'tcp_dist_m'、'pixel_err' 或 'gazebo_contact'。
         """
+        if bool(getattr(self, "_table_contact_seen", False)) and bool(
+            getattr(self, "table_contact_block_force_close", True)
+        ):
+            return False, "table_contact", None
         if bool(getattr(self, "_grasp_contact_seen", False)):
             return True, "gazebo_contact", 1.0
         thr = float(self.force_close_gripper_if_tcp_within_m)
@@ -3607,8 +3770,34 @@ def main():
                         if pb is not None:
                             vx = (pb.x, pb.y, pb.z)
                 ok_mv = m.exec_arm_sequence(vx)
-                m.report_grasp_success(ok_mv, vx)
-                if ok_mv or m._grasp_attempt >= m.grasp_max_retries:
+                table_abort = bool(
+                    getattr(m, "_grasp_table_contact_abort_mission", False)
+                )
+                if table_abort:
+                    m._grasp_table_contact_abort_mission = False
+                    rospy.logwarn(
+                        "[GRASP] 台面硬碰已收臂→不再重试前飞抓取，进入收臂返航 | EN: table abort"
+                    )
+                if (
+                    not ok_mv
+                    and m.grasp_proceed_if_gripper_closed
+                    and not table_abort
+                ):
+                    jp = m._gripper_joint_pos
+                    th = float(m.grasp_joint_closed_threshold)
+                    if (
+                        jp is not None
+                        and 0.0 <= jp <= float(m.gripper_joint_upper)
+                        and jp <= th
+                    ):
+                        rospy.logwarn(
+                            "[GRASP] MoveIt 链路未全成功但爪已闭 jp=%.3f≤%.3f→仍收臂返航（防蓝块掉落后反复重抓）| EN: proceed closed",
+                            jp,
+                            th,
+                        )
+                        ok_mv = True
+                m.report_grasp_success(ok_mv and not table_abort, vx)
+                if ok_mv or table_abort or m._grasp_attempt >= m.grasp_max_retries:
                     m._grasp_attempt = 0
                     m.phase = m.PH_ARM_HOME
                 else:
