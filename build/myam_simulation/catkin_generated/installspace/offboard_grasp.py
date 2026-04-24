@@ -1,36 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Offboard 抓取流程（myuam + myam_grasping 场景）：
-  1m 悬停 2s → 机械臂关节 [0,-1.57,2.93,0,0] → 悬停 2s → 前飞 1.6m 悬停 2s → 缓慢降至相对高度 0.4m 悬停
-  → 深度相机识别蓝块位姿（终端输出）→ MoveIt 规划抓取并闭合夹爪 → 输出是否夹住
-  → 机械臂回准备姿态 → 爬升至 1m 悬停 2s → 返航 → AUTO.LAND
-
-依赖：先启动 sitl_task.launch（或 sitl_moveit + myam_grasping）与 MAVROS、move_group。
-
-说明：抓取精度主要取决于**深度/分割 + TF** 与**机体是否对准目标**；不必在脚本里做整机重心估计。
-MoveIt 在机械臂基座系规划，PX4 负责飞行姿态。伸臂后机体轻微倾斜常见；若末端总够不着，
-优先检查视觉三维点是否合理（本脚本对 planning_frame 下 z 做工作区过滤）并微调前飞/高度。
-
-ABORTED: TIMED_OUT 常见原因：① ros_control 臂轨迹 constraints.goal_time 过短；② 名义关节速度过快、
-effort 跟踪慢；③ MoveIt 轨迹执行时长裕度不足；④ 单次末端位移过大，整段关节空间路径过长。
-见 gazebo_controllers.yaml、trajectory_execution.launch.xml、move_group.launch 节点内同名参数；
-视觉段默认 **ompl**（~vision_path_mode）+ 单段/少段位置目标；~vision_reach_seed 在 launch 中默认关。
-**务必**将 myam_sys_moveit/config/joint_limits.yaml 中 default_velocity_scaling_factor 提到 1.0（原 0.1 会使名义轨迹极慢）。
-
-无法「数学保证」一定抓起：仿真有随机性与控制极限。工程上可提高成功率：手眼标定（launch 中
-~vision_target_offset_x/y/z）、抓取失败前向微调（~grasp_retry_forward_m）、home 关节留裕度、
-控制器 goal_time；默认关闭 ~vision_reach_seed_enable 以免弦长人为拉大。
-
-排障要点（相机能看见 ≠ MoveIt 一定能执行）：
-  - 约 20s 的 TIMED_OUT：多为轨迹执行时长监控/effort 跟踪慢，未必是「够不着」；若 ~plan() 成功而 go 超时更印证此点。
-  - RViz MotionPlanning 会通过 dynamic_reconfigure 把 monitoring/scaling 改回默认，可把 ~vision_fix_trajectory_execution_via_dynreconf 保持 true。
-  - 视觉默认用位置目标（~vision_cartesian_use_pose=false）减轻姿态约束与奇异位形导致的难规划。
-  - roarm-m3 等短臂（约 0.3～0.5 m）：开启 ~vision_workspace_enable，将目标径向夹紧到 ~vision_workspace_radius_max_m，
-    避免质心在可达球外导致 OMPL「Unable to sample goal」长时间超时。
-  - 失败时开启 ~vision_log_plan_on_fail，根据 MoveItErrorCodes 区分不可达/碰撞/无效约束等。
-分步排除（与桌面文档一致）：~vision_joint_staging_enable 先到关节预摆位；~vision_preflight_plan 先仅 plan()
-  预接近/下落；预接近不可行时可 ~vision_preflight_skip_pose_if_pregrasp_fails 跳过耗时 Pose 链改走关节备用。
+Offboard：悬停 → 臂准备 → 前飞/下降 → 视觉蓝块 → MoveIt 抓取 → 返航降落。
+依赖 sitl_task + MAVROS + move_group。调参见各 ~ 参数与 launch。
 """
 
 from __future__ import print_function
@@ -55,6 +27,11 @@ from moveit_commander.exception import MoveItCommanderException
 from sensor_msgs.msg import CameraInfo, Image, JointState
 
 try:
+    from gazebo_msgs.msg import ContactsState
+except ImportError:
+    ContactsState = None
+
+try:
     from tf2_geometry_msgs import do_transform_point
     from tf2_geometry_msgs import do_transform_vector3
 except ImportError:
@@ -75,17 +52,23 @@ def start_rospy_callbacks_for_moveit(num_threads=4):
     if _AsyncSpinner is not None:
         spin = _AsyncSpinner(num_threads)
         spin.start()
-        rospy.loginfo("已启动 rospy.timer.AsyncSpinner(threads=%d)", num_threads)
+        rospy.loginfo(
+            "[ROS] AsyncSpinner(timer) threads=%d | EN: async callbacks",
+            num_threads,
+        )
         return spin
     if hasattr(rospy, "AsyncSpinner"):
         spin = rospy.AsyncSpinner(num_threads)
         spin.start()
-        rospy.loginfo("已启动 rospy.AsyncSpinner(threads=%d)", num_threads)
+        rospy.loginfo(
+            "[ROS] AsyncSpinner threads=%d | EN: async callbacks",
+            num_threads,
+        )
         return spin
     thr = threading.Thread(name="rospy_spin_callbacks", target=rospy.spin)
     thr.daemon = True
     thr.start()
-    rospy.loginfo("已启动后台 rospy.spin() 线程")
+    rospy.loginfo("[ROS] spin 后台线程 | EN: rospy.spin thread")
     return thr
 
 
@@ -129,7 +112,11 @@ def start_offboard_setpoint_stream(mission, hz, use_wall_clock=True):
     th = threading.Thread(name="offboard_setpoint_stream", target=_loop)
     th.daemon = True
     th.start()
-    rospy.loginfo("Offboard 设定点线程 %.1f Hz 已启动", hz)
+    rospy.loginfo(
+        "[OFFBOARD] 设定点流 %.1f Hz | EN: setpoint stream %.1f Hz",
+        hz,
+        hz,
+    )
     return th
 
 
@@ -140,7 +127,9 @@ def maybe_publish_offboard(m, x, y, z, yaw):
 
 def transform_point(buf, pt, target_frame, source_frame, timeout=2.0):
     if do_transform_point is None:
-        rospy.logerr("请安装 ros-$ROS_DISTRO-tf2-geometry-msgs")
+        rospy.logerr(
+            "[TF] 请安装 ros-$ROS_DISTRO-tf2-geometry-msgs | EN: install tf2_geometry_msgs"
+        )
         return None
     ps = PointStamped()
     ps.header.frame_id = source_frame
@@ -152,7 +141,13 @@ def transform_point(buf, pt, target_frame, source_frame, timeout=2.0):
         )
         return do_transform_point(ps, tfm).point
     except Exception as e:
-        rospy.logwarn_throttle(3.0, "TF %s->%s: %s", source_frame, target_frame, e)
+        rospy.logwarn_throttle(
+            3.0,
+            "[TF] %s→%s 失败: %s | EN: transform failed",
+            source_frame,
+            target_frame,
+            e,
+        )
         return None
 
 
@@ -169,7 +164,13 @@ def transform_vector(buf, vec, target_frame, source_frame, timeout=2.0):
         )
         return do_transform_vector3(vs, tfm).vector
     except Exception as e:
-        rospy.logwarn_throttle(5.0, "TF vector %s->%s: %s", source_frame, target_frame, e)
+        rospy.logwarn_throttle(
+            5.0,
+            "[TF] 矢量 %s→%s: %s | EN: vector transform failed",
+            source_frame,
+            target_frame,
+            e,
+        )
         return None
 
 
@@ -196,15 +197,23 @@ class GraspMission(object):
         self.rate_hz = float(rospy.get_param("~rate", 20.0))
         self.warmup_iters = int(rospy.get_param("~warmup_iters", 40))
         self.hover_rel_m = float(rospy.get_param("~hover_rel_m", 1.0))
-        self.low_rel_m = float(rospy.get_param("~low_rel_m", 0.4))
-        self.forward_m = float(rospy.get_param("~forward_m", 1.6))
+        self.low_rel_m = float(rospy.get_param("~low_rel_m", 0.45))
+        # 在 low_rel_m 之上再加竖直余量（米），减轻贴台、触底后弹起
+        self.low_rel_guard_m = float(rospy.get_param("~low_rel_guard_m", 0.08))
+        self.forward_m = float(rospy.get_param("~forward_m", 1.50))
+        # 机头方向在 forward_m 上再叠一段前飞（米），修正「落点略远、末端差几厘米够不着」
+        self.approach_forward_extra_m = float(
+            rospy.get_param("~approach_forward_extra_m", 0.0)
+        )
+        # 前飞水平目标用时间斜坡（秒），减轻位置阶跃 → 前倾过猛 → 高度环短暂爬升；0=瞬时跳变（旧行为）
+        self.forward_ramp_sec = float(rospy.get_param("~forward_ramp_sec", 5.0))
         # 前飞落点相对机头做侧向平移（米），与 forward_m 同时作用在 local 水平面：在 (cos,sin) 上垂向
         # 加 (sin,-cos)。约定：正值 = 从机尾向机头看，落点向**右**平移，可修正「整体偏在机头左侧」
         self.approach_lateral_m = float(rospy.get_param("~approach_lateral_m", 0.0))
         self.wp_tol_xy = float(rospy.get_param("~wp_tol_xy", 0.15))
         self.wp_tol_z = float(rospy.get_param("~wp_tol_z", 0.12))
         self.hold_sec = float(rospy.get_param("~hold_sec", 2.0))
-        self.descend_duration = float(rospy.get_param("~descend_duration", 12.0))
+        self.descend_duration = float(rospy.get_param("~descend_duration", 22.0))
         self.low_hold_sec = float(rospy.get_param("~low_hold_sec", 2.0))
 
         self.auto_arm = bool(rospy.get_param("~auto_arm", True))
@@ -257,20 +266,31 @@ class GraspMission(object):
         self.move_group_reinit_sleep = float(
             rospy.get_param("~move_group_reinit_sleep", 1.0)
         )
-        self.gripper_open = float(rospy.get_param("~gripper_open", 0.0))
-        # 预抓取前「尽量张大」的目标角；默认沿用 gripper_open（本机 URDF 夹爪为 0~1.5 rad，通常小=开）
+        self.gripper_open = float(rospy.get_param("~gripper_open", 1.5))
+        # 预抓取前「尽量张大」：URDF 约 0=闭合、1.5=全开；实际张开角见 gripper_open_max
         self.gripper_open_max = float(
             rospy.get_param("~gripper_open_max", self.gripper_open)
         )
-        self.gripper_close = float(rospy.get_param("~gripper_close", 1.0))
+        # 闭合目标角：须接近 0；误设 ~1.0 时 goal_tolerance 下 MoveIt 仍报成功但爪几乎未闭
+        self.gripper_close = float(rospy.get_param("~gripper_close", 0.12))
+        # 0：直接 _close_gripper_after_approach；否则先 MoveIt 到该角再最终闭合（配开爪近距伪吸附「微夹」）
+        self.gripper_soft_pinch = float(rospy.get_param("~gripper_soft_pinch", 0.0))
+        self.gripper_soft_pinch_pause_sec = float(
+            rospy.get_param("~gripper_soft_pinch_pause_sec", 0.18)
+        )
         self.gripper_goal_tolerance = float(
             rospy.get_param("~gripper_goal_tolerance", 0.2)
         )
         self.gripper_joint_name = rospy.get_param(
             "~gripper_joint_name", "link5_to_gripper_link"
         )
+        # 夹爪关节角 ≤ 阈值视为已闭合（URDF 约 0=闭、1.5=开）
         self.grasp_joint_closed_threshold = float(
             rospy.get_param("~grasp_joint_closed_threshold", 0.35)
+        )
+        # true：exec_arm_sequence 报 False 但夹爪已闭（如假磁吸后块掉、仍应去收臂返航）时仍进入 PH_ARM_HOME，避免回 detect 死抓
+        self.grasp_proceed_if_gripper_closed = bool(
+            rospy.get_param("~grasp_proceed_if_gripper_closed", True)
         )
         # 规划系下桌面目标大致高度带；超出则丢弃视觉点（避免 z≈1m 等错误深度导致 TIMED_OUT）
         self.vision_reframe_z_min = float(rospy.get_param("~vision_reframe_z_min", -0.25))
@@ -278,6 +298,142 @@ class GraspMission(object):
         self.grasp_ee_to_target_max_m = float(
             rospy.get_param("~grasp_ee_to_target_max_m", 0.12)
         )
+        # 规划系距离大但画面上仍对准：可将 TCP 投到像素平面与检测 uv 比较（与 grasp_ee_to_target_max_m 逻辑或）
+        self.grasp_ee_near_cam_fallback_enable = bool(
+            rospy.get_param("~grasp_ee_near_cam_fallback_enable", False)
+        )
+        self.grasp_ee_near_cam_fallback_max_px = float(
+            rospy.get_param("~grasp_ee_near_cam_fallback_max_px", 80.0)
+        )
+        # 末段 execute 失败（如 Gazebo CONTROL_FAILED）时仍尝试闭爪的放宽判据（0=关闭该项）
+        self.force_close_gripper_if_tcp_within_m = float(
+            rospy.get_param("~force_close_gripper_if_tcp_within_m", 0.20)
+        )
+        # 与上项逻辑或：TCP 在画面上距稳定检测 uv 的像素误差 ≤ 此值也允许强制闭爪；0=不用像素
+        self.force_close_gripper_if_pixel_below_px = float(
+            rospy.get_param("~force_close_gripper_if_pixel_below_px", 0.0)
+        )
+        # Gazebo myam_grasping.world 蓝块 bumper → ContactsState（须在订阅 bumper 之前赋值）
+        self.grasp_contact_trigger_enable = bool(
+            rospy.get_param("~grasp_contact_trigger_enable", True)
+        )
+        self.grasp_contact_topic = rospy.get_param(
+            "~grasp_contact_topic", "/grasp_cube_contact_bumper"
+        ).strip()
+        self._grasp_contact_arm_kws = rospy.get_param(
+            "~grasp_contact_arm_name_substrings",
+            ["gripper_link", "link5_to_gripper", "hand_tcp"],
+        )
+        self._grasp_contact_cube_kws = rospy.get_param(
+            "~grasp_contact_cube_name_substrings",
+            ["cube_link", "grasp_target_cube"],
+        )
+        # myam_grasping.world 台面 bumper → ContactsState：臂顶台面后收臂，避免为抓取一直硬顶
+        self.table_contact_retract_enable = bool(
+            rospy.get_param("~table_contact_retract_enable", True)
+        )
+        self.table_contact_topic = rospy.get_param(
+            "~table_contact_topic", "/grasp_table_contact_bumper"
+        ).strip()
+        self._table_contact_arm_kws = rospy.get_param(
+            "~table_contact_arm_name_substrings",
+            [
+                "roarm",
+                "gripper_link",
+                "hand_tcp",
+                "link5_to_gripper",
+                "::link1::",
+                "::link2::",
+                "::link3::",
+                "::link4::",
+                "::link5::",
+            ],
+        )
+        self._table_contact_table_kws = rospy.get_param(
+            "~table_contact_table_name_substrings",
+            ["grasp_table", "table_link"],
+        )
+        self.table_contact_block_force_close = bool(
+            rospy.get_param("~table_contact_block_force_close", True)
+        )
+        self._table_contact_seen = False
+        self._grasp_table_contact_abort_mission = False
+        # TCP 在相机光学系 z 很小时投影病态；用下限代替直接放弃，避免日志 nan、丢失像素回退
+        self.grasp_tcp_proj_min_z_m = float(
+            rospy.get_param("~grasp_tcp_proj_min_z_m", 0.02)
+        )
+        # true：分多步关爪，|joint effort| 超阈值则视为顶到物体后仍执行最后全闭
+        self.grasp_incremental_close_enable = bool(
+            rospy.get_param("~grasp_incremental_close_enable", False)
+        )
+        self.grasp_incremental_close_steps = int(
+            rospy.get_param("~grasp_incremental_close_steps", 10)
+        )
+        self.grasp_touch_effort_abs = float(
+            rospy.get_param("~grasp_touch_effort_abs", 1.5)
+        )
+        # 仅加在「下落点」z 上：略增下探（负值），提高指尖够到台面方块的概率
+        self.vision_grasp_plunge_extra_z_m = float(
+            rospy.get_param("~vision_grasp_plunge_extra_z_m", 0.0)
+        )
+        # 主视觉链成功后、夹爪闭合前：再采深度并短步 OMPL 修正（有界），减轻开环漂移
+        self.grasp_fin_refine_enable = bool(
+            rospy.get_param("~grasp_fin_refine_enable", True)
+        )
+        self.grasp_fin_refine_iters = int(
+            rospy.get_param("~grasp_fin_refine_iters", 2)
+        )
+        self.grasp_fin_refine_settle_sec = float(
+            rospy.get_param("~grasp_fin_refine_settle_sec", 0.12)
+        )
+        self.grasp_fin_refine_min_disp_m = float(
+            rospy.get_param("~grasp_fin_refine_min_disp_m", 0.004)
+        )
+        self.grasp_fin_refine_max_step_m = float(
+            rospy.get_param("~grasp_fin_refine_max_step_m", 0.038)
+        )
+        self.grasp_fin_refine_vel_scale = float(
+            rospy.get_param("~grasp_fin_refine_vel_scale", 0.32)
+        )
+        # 闭合前微调：TCP 已接近本轮刷新目标或像素已对准则提前结束微调→尽快闭爪；0=关闭该项
+        self.grasp_fin_refine_early_stop_tcp_m = float(
+            rospy.get_param("~grasp_fin_refine_early_stop_tcp_m", 0.0)
+        )
+        self.grasp_fin_refine_early_stop_pixel_px = float(
+            rospy.get_param("~grasp_fin_refine_early_stop_pixel_px", 0.0)
+        )
+        # GRASP_COMMIT：闭合前仅在「触发区」内连续 N 帧满足（位姿+可选像素）才锁定目标并闭爪；超时则锁定最后有效目标
+        self.grasp_commit_enable = bool(rospy.get_param("~grasp_commit_enable", True))
+        self.grasp_commit_pos_tol_m = float(
+            rospy.get_param("~grasp_commit_pos_tol_m", 0.038)
+        )
+        # EE z 轴与期望接近方向夹角 ≤ 该值(弧度)；0=不检查姿态
+        self.grasp_commit_orient_tol_rad = float(
+            rospy.get_param("~grasp_commit_orient_tol_rad", 0.35)
+        )
+        # >0 时像素偏差须同时满足；0=不把像素并入触发区
+        self.grasp_commit_pixel_tol_px = float(
+            rospy.get_param("~grasp_commit_pixel_tol_px", 0.0)
+        )
+        self.grasp_commit_stable_frames = int(
+            rospy.get_param("~grasp_commit_stable_frames", 3)
+        )
+        self.grasp_commit_refine_timeout_sec = float(
+            rospy.get_param("~grasp_commit_refine_timeout_sec", 12.0)
+        )
+        _axis = rospy.get_param(
+            "~grasp_commit_desired_approach_axis", [0.0, 0.0, -1.0]
+        )
+        self._grasp_commit_desired_axis = np.asarray(_axis, dtype=np.float64).reshape(
+            3,
+        )
+        na = float(np.linalg.norm(self._grasp_commit_desired_axis))
+        if na > 1e-9:
+            self._grasp_commit_desired_axis /= na
+        else:
+            self._grasp_commit_desired_axis = np.array(
+                [0.0, 0.0, -1.0], dtype=np.float64
+            )
         # roarm_base_link 原点近似为臂座：球形工作区，限制视觉末端目标，减轻短臂够不着导致的 OMPL 超时
         self.vision_workspace_enable = bool(
             rospy.get_param("~vision_workspace_enable", True)
@@ -319,10 +475,10 @@ class GraspMission(object):
             "~vision_target_offset", [0.0, 0.0, 0.0]
         )
         self.vision_pregrasp_delta = rospy.get_param(
-            "~vision_pregrasp_delta", [0.0, 0.0, 0.08]
+            "~vision_pregrasp_delta", [0.0, 0.0, 0.038]
         )
         self.vision_grasp_delta = rospy.get_param(
-            "~vision_grasp_delta", [0.0, 0.0, -0.06]
+            "~vision_grasp_delta", [0.0, 0.0, -0.048]
         )
         self.vision_cartesian_vel_scale = float(
             rospy.get_param("~vision_cartesian_vel_scale", 0.4)
@@ -418,6 +574,10 @@ class GraspMission(object):
         self.vision_segment_max_steps = int(
             rospy.get_param("~vision_segment_max_steps", 12)
         )
+        # 预接近折线最多 N 段（1=一次 OMPL 到预接近点）；下落仍用 vision_segment_* 与步长
+        self.vision_pregrasp_max_segments = int(
+            rospy.get_param("~vision_pregrasp_max_segments", 1)
+        )
         # cartesian_execute：笛卡尔直线；ompl（及任意非前者）：仅用 OMPL，见 exec_arm_sequence 分支
         self.vision_path_mode = rospy.get_param("~vision_path_mode", "ompl").strip().lower()
         self.vision_cartesian_eef_step = float(
@@ -503,6 +663,33 @@ class GraspMission(object):
         self.vision_ompl_lock_wrist_orientation = bool(
             rospy.get_param("~vision_ompl_lock_wrist_orientation", False)
         )
+        # ---------- 5DOF：plan+execute、Z 回退、末点 XY 多试、TCP 指尖余量 ----------
+        self.vision_5dof_use_plan_execute = bool(
+            rospy.get_param("~vision_5dof_use_plan_execute", True)
+        )
+        self.vision_5dof_execute_max_retries = int(
+            rospy.get_param("~vision_5dof_execute_max_retries", 4)
+        )
+        self.vision_5dof_execute_scale_decay = float(
+            rospy.get_param("~vision_5dof_execute_scale_decay", 0.58)
+        )
+        self.vision_5dof_z_backoff_steps = int(
+            rospy.get_param("~vision_5dof_z_backoff_steps", 6)
+        )
+        self.vision_5dof_z_backoff_dz = float(
+            rospy.get_param("~vision_5dof_z_backoff_dz", 0.032)
+        )
+        self.vision_grasp_xy_retry_offsets = rospy.get_param(
+            "~vision_grasp_xy_retry_offsets",
+            [
+                [0.0, 0.0],
+                [0.007, 0.0],
+                [-0.007, 0.0],
+                [0.0, 0.007],
+                [0.0, -0.007],
+            ],
+        )
+        self.vision_tcp_extra_z_m = float(rospy.get_param("~vision_tcp_extra_z_m", 0.028))
         # 关节前插已成功时跳过笛卡尔微步（微步仍易 TIMED_OUT；主折线段更大、反而常与关节前插衔接更好）
         self.vision_polyline_skip_cartesian_micro_after_joint = bool(
             rospy.get_param("~vision_polyline_skip_cartesian_micro_after_joint", True)
@@ -540,9 +727,18 @@ class GraspMission(object):
         self.detection_stable = int(rospy.get_param("~detection_stable_frames", 5))
 
         self.detect_refine_xy_enable = bool(rospy.get_param("~detect_refine_xy_enable", True))
-        self.detect_refine_xy_gain = float(rospy.get_param("~detect_refine_xy_gain", 0.2))
+        self.detect_refine_xy_gain = float(rospy.get_param("~detect_refine_xy_gain", 0.11))
         self.detect_refine_xy_max_step = float(
-            rospy.get_param("~detect_refine_xy_max_step", 0.025)
+            rospy.get_param("~detect_refine_xy_max_step", 0.014)
+        )
+        self.detect_refine_min_pixel_error = float(
+            rospy.get_param("~detect_refine_min_pixel_error", 22.0)
+        )
+        self.detect_refine_max_cumulative_m = float(
+            rospy.get_param("~detect_refine_max_cumulative_m", 0.05)
+        )
+        self.detect_refine_xy_stride = max(
+            1, int(rospy.get_param("~detect_refine_xy_stride", 2))
         )
 
         self.ref_frame = rospy.get_param("~planning_frame", "roarm_base_link")
@@ -550,16 +746,26 @@ class GraspMission(object):
             "~camera_optical_frame", "camera_color_optical_frame"
         )
         self.tf_refine_target_frame = rospy.get_param("~tf_refine_target_frame", "").strip()
+        # 识别阶段微调机体位置：增量须与 MAVROS local 位置同系（一般为 map），不可再用臂座系直接加 x_fwd/y_fwd
+        self.detect_refine_xy_target_frame = rospy.get_param(
+            "~detect_refine_xy_target_frame", "map"
+        ).strip()
 
         self.grasp_max_retries = int(rospy.get_param("~grasp_max_retries", 2))
         self.grasp_retry_forward_m = float(rospy.get_param("~grasp_retry_forward_m", 0.0))
+        # True：offboard 偏航锁为起飞后记录的 yaw0（+ 可选 offset），减轻前飞/下降中机头漂移导致视觉与规划系不对齐
+        self.lock_mission_yaw = bool(rospy.get_param("~lock_mission_yaw", False))
+        self.mission_yaw_offset_rad = float(
+            rospy.get_param("~mission_yaw_offset_rad", 0.0)
+        )
         if self.grasp_retry_forward_m > 1e-6:
             rospy.logwarn(
-                "grasp_retry_forward_m=%.3f：失败后机体会前飞再识别，相对台面移动会使蓝块在 "
-                "roarm_base_link 下坐标跳变，日志里「预接近欧氏距」可能不降反升；不需则 launch 设为 0",
+                "[CFG] grasp_retry_forward_m=%.3f（机体动则视觉目标在臂座系跳变；可置0）| EN: retry_fwd may shift target in arm frame",
                 self.grasp_retry_forward_m,
             )
         self.gripper_joint_upper = float(rospy.get_param("~gripper_joint_upper", 1.52))
+        # 与 SRDF arm tip_link / RViz 末端一致，用于 TF 诊断（report_grasp_success）
+        self.ee_tcp_frame = rospy.get_param("~ee_tcp_frame", "hand_tcp")
 
         self.state = State()
         self.pose = PoseStamped()
@@ -570,7 +776,12 @@ class GraspMission(object):
         self._K = None
         self._stable_cnt = 0
         self._last_uv = None
+        self._refine_xy_cumulative_m = 0.0
+        self._refine_frame_tick = 0
         self._gripper_joint_pos = None
+        self._gripper_joint_effort = None
+        # exec_arm_sequence 内最终下落点（工作区夹紧 + vision_tcp_extra_z 后），供 report 与 MoveIt 目标一致
+        self._last_exec_p_fin = None
         self.t_phase0 = 0.0
         self._hold_since = None
         self._grasp_attempt = 0
@@ -581,6 +792,8 @@ class GraspMission(object):
         self.z_low = 0.0
         self.z_sp = 0.0
         self.x_fwd = self.y_fwd = 0.0
+        self._fwd_ramp_x0 = self._fwd_ramp_y0 = 0.0
+        self._fwd_ramp_x1 = self._fwd_ramp_y1 = 0.0
 
         self._moveit_cpp_inited = False
         self._arm_mgc = None
@@ -594,7 +807,31 @@ class GraspMission(object):
         rospy.Subscriber(self.color_topic, Image, self._cb_img, queue_size=1)
         rospy.Subscriber(self.depth_topic, Image, self._cb_depth, queue_size=1)
         rospy.Subscriber(self.camera_info_topic, CameraInfo, self._cb_info, queue_size=1)
-        rospy.Subscriber("/joint_states", JointState, self._cb_joint_states, queue_size=1)
+        jst = rospy.get_param("~joint_states_topic", "/joint_states_merged")
+        rospy.Subscriber(jst, JointState, self._cb_joint_states, queue_size=1)
+
+        if ContactsState is not None and self.grasp_contact_trigger_enable:
+            rospy.Subscriber(
+                self.grasp_contact_topic,
+                ContactsState,
+                self._cb_grasp_contact,
+                queue_size=10,
+            )
+            rospy.loginfo(
+                "[NODE] Gazebo 爪-块碰撞→收爪 topic=%s | EN: bumper contact",
+                self.grasp_contact_topic,
+            )
+        if ContactsState is not None and self.table_contact_retract_enable:
+            rospy.Subscriber(
+                self.table_contact_topic,
+                ContactsState,
+                self._cb_table_contact,
+                queue_size=10,
+            )
+            rospy.loginfo(
+                "[NODE] Gazebo 臂↔台面碰撞→收臂中止抓取 topic=%s | EN: table bumper",
+                self.table_contact_topic,
+            )
 
         self.sp_pub = rospy.Publisher(
             "/mavros/setpoint_raw/local", PositionTarget, queue_size=10
@@ -603,7 +840,7 @@ class GraspMission(object):
         self.arming = rospy.ServiceProxy("/mavros/cmd/arming", CommandBool)
 
         rospy.loginfo(
-            "offboard_grasp: color=%s depth=%s planning_frame=%s",
+            "[NODE] 订阅 color=%s depth=%s 规划系=%s | EN: topics + planning frame",
             self.color_topic,
             self.depth_topic,
             self.ref_frame,
@@ -637,10 +874,118 @@ class GraspMission(object):
         except CvBridgeError as e:
             rospy.logwarn_throttle(5.0, str(e))
 
+    def _cb_grasp_contact(self, msg):
+        """蓝块 bumper：一对碰撞名含爪与立方体时置位，供跳过微调 / 强制闭爪。"""
+        if not self.grasp_contact_trigger_enable:
+            return
+        try:
+            for st in msg.states:
+                if self._grasp_contact_pair_is_target(
+                    st.collision1_name, st.collision2_name
+                ):
+                    if not self._grasp_contact_seen:
+                        rospy.loginfo(
+                            "[CONTACT] 检测到爪↔蓝块碰撞 %s × %s | EN: grasp bump",
+                            st.collision1_name,
+                            st.collision2_name,
+                        )
+                    self._grasp_contact_seen = True
+                    return
+        except Exception:
+            pass
+
+    def _grasp_contact_pair_is_target(self, n1, n2):
+        n1 = (n1 or "").lower()
+        n2 = (n2 or "").lower()
+
+        def has_kw(s, kws):
+            return any(k.lower() in s for k in kws)
+
+        arm_cube = has_kw(n1, self._grasp_contact_arm_kws) and has_kw(
+            n2, self._grasp_contact_cube_kws
+        )
+        cube_arm = has_kw(n2, self._grasp_contact_arm_kws) and has_kw(
+            n1, self._grasp_contact_cube_kws
+        )
+        return arm_cube or cube_arm
+
+    def _cb_table_contact(self, msg):
+        """台面 bumper：臂 link 与 grasp_table 碰撞时置位。"""
+        if not self.table_contact_retract_enable:
+            return
+        try:
+            for st in msg.states:
+                if self._table_contact_pair_is_target(
+                    st.collision1_name, st.collision2_name
+                ):
+                    if not self._table_contact_seen:
+                        rospy.loginfo(
+                            "[TABLE] 臂↔台面碰撞 %s × %s | EN: table bump",
+                            st.collision1_name,
+                            st.collision2_name,
+                        )
+                    self._table_contact_seen = True
+                    return
+        except Exception:
+            pass
+
+    def _table_contact_pair_is_target(self, n1, n2):
+        n1 = (n1 or "").lower()
+        n2 = (n2 or "").lower()
+
+        def has_kw(s, kws):
+            return any(k.lower() in s for k in kws)
+
+        if not (
+            has_kw(n1, self._table_contact_table_kws)
+            or has_kw(n2, self._table_contact_table_kws)
+        ):
+            return False
+        return has_kw(n1, self._table_contact_arm_kws) or has_kw(
+            n2, self._table_contact_arm_kws
+        )
+
+    def _handle_table_contact_retract(self, arm):
+        """停止当前轨迹并收至 pregrasp，置位本任务中止抓取（不再重试顶台面）。"""
+        try:
+            arm.stop()
+        except Exception:
+            pass
+        rospy.logwarn(
+            "[TABLE] 收臂(pregrasp) 中止下探 | EN: retract from table hit"
+        )
+        self._grasp_table_contact_abort_mission = True
+        self._table_contact_seen = False
+        try:
+            arm.clear_pose_targets()
+        except MoveItCommanderException:
+            pass
+        vs = max(0.12, min(0.45, float(self.arm_ready_vel_scaling)))
+        ac = max(0.12, min(0.45, float(self.arm_ready_accel_scaling)))
+        self.configure_arm_move_group(arm, vel_scaling=vs, accel_scaling=ac)
+        arm.set_joint_value_target([float(x) for x in self.pregrasp_joints])
+        try:
+            arm.go(wait=True)
+        except MoveItCommanderException:
+            pass
+
+    def _consume_table_contact_retract(self, arm):
+        """若本周期检测到台面碰撞则收臂并返回 True（调用方应中止当前运动链）。"""
+        if not self.table_contact_retract_enable:
+            return False
+        if not getattr(self, "_table_contact_seen", False):
+            return False
+        self._handle_table_contact_retract(arm)
+        return True
+
     def _cb_joint_states(self, msg):
         try:
             i = msg.name.index(self.gripper_joint_name)
             self._gripper_joint_pos = float(msg.position[i])
+            if msg.effort and len(msg.effort) == len(msg.name):
+                self._gripper_joint_effort = float(msg.effort[i])
+            else:
+                self._gripper_joint_effort = None
         except ValueError:
             pass
 
@@ -674,8 +1019,33 @@ class GraspMission(object):
     def dist3(ax, ay, az, bx, by, bz):
         return math.sqrt((ax - bx) ** 2 + (ay - by) ** 2 + (az - bz) ** 2)
 
+    def offboard_yaw_cmd(self):
+        """offboard 期望偏航：可锁 yaw0 抑制漂移，否则跟随当前估计。"""
+        off = float(self.mission_yaw_offset_rad)
+        if self.lock_mission_yaw:
+            return float(self.yaw0) + off
+        return float(self.yaw_from_pose(self.pose)) + off
+
+    def _forward_offboard_xy(self):
+        """前飞段：水平设定点沿 (x0,y0)→(x_fwd,y_fwd) 时间斜坡；近终点则直接锁终点。"""
+        if self.phase != self.PH_FWD:
+            return self.x_fwd, self.y_fwd
+        if self.forward_ramp_sec <= 1e-6:
+            return self.x_fwd, self.y_fwd
+        px = self.pose.pose.position.x
+        py = self.pose.pose.position.y
+        # 略大锁定半径：避免「机体已接近前飞点，斜坡设定点仍落在后方」→ PX4 往回拽、振荡
+        snap_xy = max(self.wp_tol_xy * 2.5, 0.32)
+        if math.hypot(px - self.x_fwd, py - self.y_fwd) < snap_xy:
+            return self.x_fwd, self.y_fwd
+        # 与 t_phase0 一致使用仿真时钟，避免 use_sim_time 下墙钟漂移导致斜坡与 PX4 不同步
+        t_a = min(1.0, (rospy.get_time() - self.t_phase0) / self.forward_ramp_sec)
+        xr = self._fwd_ramp_x0 + t_a * (self._fwd_ramp_x1 - self._fwd_ramp_x0)
+        yr = self._fwd_ramp_y0 + t_a * (self._fwd_ramp_y1 - self._fwd_ramp_y0)
+        return xr, yr
+
     def get_offboard_sp_tuple(self):
-        yaw_live = self.yaw_from_pose(self.pose)
+        y_cmd = self.offboard_yaw_cmd()
         p = self.phase
         if p == self.PH_DONE:
             return None
@@ -684,9 +1054,12 @@ class GraspMission(object):
             self.PH_ARM_READY,
             self.PH_ARM_SETTLE,
         ):
-            return self.x0, self.y0, self.z_high, yaw_live
-        if p in (self.PH_FWD, self.PH_FWD_SETTLE):
-            return self.x_fwd, self.y_fwd, self.z_high, yaw_live
+            return self.x0, self.y0, self.z_high, y_cmd
+        if p == self.PH_FWD:
+            fx, fy = self._forward_offboard_xy()
+            return fx, fy, self.z_high, y_cmd
+        if p == self.PH_FWD_SETTLE:
+            return self.x_fwd, self.y_fwd, self.z_high, y_cmd
         if p in (
             self.PH_DESCEND,
             self.PH_LOW_HOLD,
@@ -694,12 +1067,14 @@ class GraspMission(object):
             self.PH_GRASP,
             self.PH_ARM_HOME,
         ):
-            return self.x_fwd, self.y_fwd, self.z_sp, yaw_live
+            return self.x_fwd, self.y_fwd, self.z_sp, y_cmd
         if p in (self.PH_CLIMB, self.PH_CLIMB_SETTLE):
-            return self.x_fwd, self.y_fwd, self.z_high, yaw_live
+            return self.x_fwd, self.y_fwd, self.z_high, y_cmd
         if p in (self.PH_RTL, self.PH_LAND):
-            return self.x0, self.y0, self.z_high, self.yaw0
-        return self.x0, self.y0, self.z_high, yaw_live
+            return self.x0, self.y0, self.z_high, float(self.yaw0) + float(
+                self.mission_yaw_offset_rad
+            )
+        return self.x0, self.y0, self.z_high, y_cmd
 
     def wait_move_group(self, timeout=120.0):
         svc = rospy.get_param("~move_group_ready_service", "/move_group/get_loggers")
@@ -707,10 +1082,16 @@ class GraspMission(object):
         while time.time() - t0 < timeout and not rospy.is_shutdown():
             try:
                 rospy.wait_for_service(svc, timeout=1.0)
-                rospy.loginfo("move_group 已就绪（%s）", svc)
+                rospy.loginfo(
+                    "[MOVEIT] move_group 就绪 %s | EN: move_group ready",
+                    svc,
+                )
                 return True
             except rospy.ROSException:
-                rospy.loginfo_throttle(5.0, "等待 move_group …")
+                rospy.loginfo_throttle(
+                    5.0,
+                    "[MOVEIT] 等待 move_group 服务 | EN: waiting for move_group",
+                )
         return False
 
     def _maybe_fix_trajectory_execution_dynreconf(
@@ -723,7 +1104,9 @@ class GraspMission(object):
             from dynamic_reconfigure.client import Client
         except ImportError:
             if not self._dynreconf_warned:
-                rospy.logwarn("未安装 dynamic_reconfigure，无法强制 trajectory_execution 参数")
+                rospy.logwarn(
+                    "[MOVEIT] 无 dynamic_reconfigure，跳过轨迹 dyn | EN: skip traj dynreconf"
+                )
                 self._dynreconf_warned = True
             return
         ev_src = (
@@ -747,28 +1130,28 @@ class GraspMission(object):
                 if reason == "exec_arm_joints":
                     rospy.loginfo_throttle(
                         25.0,
-                        "dynamic_reconfigure %s → monitoring=false execution_velocity_scaling=%.2f (%s)",
+                        "[MOVEIT] dynreconf %s exec_vel=%.2f (%s) | EN: traj exec scaling",
                         self.move_group_trajectory_execution_ns,
                         ev,
                         reason,
                     )
                 else:
                     rospy.loginfo(
-                        "dynamic_reconfigure %s → monitoring=false execution_velocity_scaling=%.2f (%s)",
+                        "[MOVEIT] dynreconf %s exec_vel=%.2f (%s) | EN: traj exec scaling",
                         self.move_group_trajectory_execution_ns,
                         ev,
                         reason,
                     )
             else:
                 rospy.loginfo_once(
-                    "dynamic_reconfigure %s → monitoring=false execution_velocity_scaling=%.2f",
+                    "[MOVEIT] dynreconf %s exec_vel=%.2f | EN: traj exec scaling",
                     self.move_group_trajectory_execution_ns,
                     ev,
                 )
         except Exception as e:
             rospy.logwarn_throttle(
                 30.0,
-                "dynamic_reconfigure 设置 %s 失败: %s",
+                "[MOVEIT] dynreconf 失败 %s: %s | EN: dynreconf failed",
                 self.move_group_trajectory_execution_ns,
                 e,
             )
@@ -816,7 +1199,9 @@ class GraspMission(object):
         try:
             from moveit_msgs.msg import MoveItErrorCodes as _M
         except ImportError:
-            rospy.logwarn("无 moveit_msgs，跳过规划探针")
+            rospy.logwarn(
+                "[PROBE] 无 moveit_msgs，跳过探针 | EN: moveit_msgs missing, skip probe"
+            )
             return
         try:
             try:
@@ -845,38 +1230,173 @@ class GraspMission(object):
                     npt = len(traj.joint_trajectory.points)
             except Exception:
                 pass
+            hint = ""
+            if ok:
+                hint = "exec_timeout?"
+            elif err.val == _M.NO_IK_SOLUTION:
+                hint = "NO_IK"
+            elif err.val in (_M.START_STATE_IN_COLLISION, _M.GOAL_IN_COLLISION):
+                hint = "collision"
+            elif err.val == _M.PLANNING_FAILED:
+                hint = "PLAN_FAIL"
+            elif err.val == _M.INVALID_GOAL_CONSTRAINTS:
+                hint = "BAD_CONSTRAINTS"
+            elif err.val == _M.TIMED_OUT:
+                hint = "TIMED_OUT"
             rospy.logwarn(
-                "MoveIt 规划探针「%s」: success=%s planning_time=%.3fs err=%s traj_waypoints=%d",
+                "[PROBE] 「%s」 ok=%s t=%.2fs err=%s wp=%d (%s) | EN: plan probe",
                 label,
                 ok,
                 float(ptime),
                 self._moveit_error_name(err.val),
                 npt,
+                hint,
             )
-            if ok:
-                rospy.logwarn(
-                    "→ 规划成功但 arm.go 曾失败：更可能是 **执行超时/effort 跟踪** 或 dynreconf 把 monitoring 打开，而非目标不可达。"
-                )
-            elif err.val == _M.NO_IK_SOLUTION:
-                rospy.logwarn("→ 无解 IK：检查工作空间、关节限位或改用 vision_cartesian_use_pose=false。")
-            elif err.val in (_M.START_STATE_IN_COLLISION, _M.GOAL_IN_COLLISION):
-                rospy.logwarn("→ 起/终点碰撞：检查 SRDF、桌面碰撞体与自碰。")
-            elif err.val == _M.PLANNING_FAILED:
-                rospy.logwarn("→ 规划失败：可能不可达、奇异附近路径过长或场景过紧。")
-            elif err.val == _M.INVALID_GOAL_CONSTRAINTS:
-                rospy.logwarn("→ 目标约束无效：尝试放宽 vision_goal_*_tolerance 或仅位置目标。")
-            elif err.val == _M.TIMED_OUT:
-                rospy.logwarn(
-                    "→ 探针为 TIMED_OUT 且 planning_time≈0：多为 **move 动作端未复位** 的假读数，"
-                    "不等价于「目标不可达」；根因仍看前面三次 arm.go 的执行超时。"
-                )
         except Exception as e:
-            rospy.logwarn("规划探针异常「%s」: %s", label, e)
+            rospy.logwarn(
+                "[PROBE] 「%s」异常: %s | EN: probe exception",
+                label,
+                e,
+            )
         finally:
             try:
                 arm.clear_pose_targets()
             except Exception:
                 pass
+
+    def _vision_plan_execute_at_xyz(self, arm, px, py, pz, label, base_vs):
+        """5DOF：仅位置 set_position_target → plan/execute，带速度衰减重试。"""
+        v0 = max(0.08, min(0.95, float(base_vs)))
+        decay = max(0.12, float(self.vision_5dof_execute_scale_decay))
+        retries = max(1, int(self.vision_5dof_execute_max_retries))
+        for att in range(retries):
+            scale = max(0.06, decay ** att)
+            vs = max(0.06, min(1.0, v0 * scale))
+            arm.set_max_velocity_scaling_factor(vs)
+            arm.set_max_acceleration_scaling_factor(min(1.0, v0 * scale))
+            try:
+                arm.clear_pose_targets()
+            except MoveItCommanderException:
+                pass
+            try:
+                arm.set_start_state_to_current_state()
+            except Exception:
+                pass
+            arm.set_position_target([float(px), float(py), float(pz)])
+            err = None
+            try:
+                ok_plan, traj, ptime, err = arm.plan()
+            except MoveItCommanderException as e:
+                rospy.logwarn(
+                    "[MOVEIT] %s plan 异常: %s | EN: plan exception",
+                    label,
+                    e,
+                )
+                ok_plan = False
+                traj = None
+                ptime = 0.0
+            npts = 0
+            if traj is not None and hasattr(traj, "joint_trajectory"):
+                npts = len(traj.joint_trajectory.points)
+            if not ok_plan or traj is None or npts < 1:
+                rospy.logwarn(
+                    "[MOVEIT] %s 规划失败 att=%d err=%s pts=%d | EN: plan failed",
+                    label,
+                    att + 1,
+                    self._moveit_error_name(getattr(err, "val", -1))
+                    if err is not None
+                    else "?",
+                    npts,
+                )
+                continue
+            try:
+                ex_ok = arm.execute(traj, wait=True)
+            except MoveItCommanderException as e:
+                rospy.logwarn(
+                    "[MOVEIT] %s execute 异常: %s | EN: execute exception",
+                    label,
+                    e,
+                )
+                ex_ok = False
+            if ex_ok:
+                return True
+            # 执行失败后关节停在半途；不 stop+等待则下一段轨迹首点与真机差过大 → Invalid Trajectory / CONTROL_FAILED
+            try:
+                arm.stop()
+            except Exception:
+                pass
+            rospy.sleep(max(0.35, float(getattr(self, "vision_plan_probe_settle_sec", 0.35)) * 0.9))
+        return False
+
+    def _vision_plan_execute_position_z_backoff(self, arm, pt, label, base_vs):
+        px, py = float(pt[0]), float(pt[1])
+        pzn = float(pt[2])
+        for zb in range(max(1, self.vision_5dof_z_backoff_steps + 1)):
+            pz = pzn - zb * float(self.vision_5dof_z_backoff_dz)
+            lab = label if zb == 0 else "%s Z=%.3f" % (label, pz)
+            if self._vision_plan_execute_at_xyz(arm, px, py, pz, lab, base_vs):
+                if zb > 0:
+                    rospy.loginfo(
+                        "[5DOF] TCP Z 回退成功 z_nom=%.3f→z=%.3f | EN: Z backoff OK",
+                        pzn,
+                        pz,
+                    )
+                return True
+            if zb < int(self.vision_5dof_z_backoff_steps):
+                rospy.loginfo(
+                    "%s: 下一尝试将 TCP Z 降低 %.3f m",
+                    label,
+                    float(self.vision_5dof_z_backoff_dz),
+                )
+        return False
+
+    def _go_vision_polyline_to_fin_with_xy(self, arm, p_pre, p_fin, vs0):
+        offs = self.vision_grasp_xy_retry_offsets or [[0.0, 0.0]]
+        for off in offs:
+            if len(off) < 2:
+                continue
+            dx, dy = float(off[0]), float(off[1])
+            pf = [float(p_fin[0]) + dx, float(p_fin[1]) + dy, float(p_fin[2])]
+            sub = (
+                "下落"
+                if (abs(dx) < 1e-9 and abs(dy) < 1e-9)
+                else "下落 Δxy(%+.4f,%+.4f)" % (dx, dy)
+            )
+            if self._go_vision_polyline_with_leadin(arm, p_pre, pf, sub, vs0):
+                return True
+        return False
+
+    def _vision_motion_leg_fin_with_xy(self, arm, p_pre, p_fin, vs0):
+        offs = self.vision_grasp_xy_retry_offsets or [[0.0, 0.0]]
+        for off in offs:
+            if len(off) < 2:
+                continue
+            dx, dy = float(off[0]), float(off[1])
+            pf = [float(p_fin[0]) + dx, float(p_fin[1]) + dy, float(p_fin[2])]
+            sub = (
+                "下落"
+                if (abs(dx) < 1e-9 and abs(dy) < 1e-9)
+                else "下落 Δxy(%+.4f,%+.4f)" % (dx, dy)
+            )
+            if self._vision_motion_leg(arm, p_pre, pf, sub, vs0):
+                return True
+        return False
+
+    def _go_vision_fin_waypoint_with_xy(self, arm, p_fin, vs0):
+        offs = self.vision_grasp_xy_retry_offsets or [[0.0, 0.0]]
+        for off in offs:
+            if len(off) < 2:
+                continue
+            dx, dy = float(off[0]), float(off[1])
+            pf = [float(p_fin[0]) + dx, float(p_fin[1]) + dy, float(p_fin[2])]
+            sub = (
+                "下落"
+                if (abs(dx) < 1e-9 and abs(dy) < 1e-9)
+                else "下落 Δxy(%+.4f,%+.4f)" % (dx, dy)
+            )
+            if self._go_vision_waypoint(arm, pf, sub, vs0):
+                return True
+        return False
 
     def _vision_preflight_plan_ok(self, arm, pt, label):
         """仅 plan() 不 execute；用于预检预接近/下落点在 planning_frame 下是否可得规划。"""
@@ -948,6 +1468,62 @@ class GraspMission(object):
                     arm.clear_pose_targets()
                 except MoveItCommanderException:
                     pass
+                if (
+                    mode_tag == "position"
+                    and self.vision_5dof_use_plan_execute
+                    and not self.vision_cartesian_use_pose
+                ):
+                    px, py, pzn = float(pt[0]), float(pt[1]), float(pt[2])
+                    plan_ok_any = False
+                    for zb in range(max(1, self.vision_5dof_z_backoff_steps + 1)):
+                        pz = pzn - zb * float(self.vision_5dof_z_backoff_dz)
+                        try:
+                            arm.clear_pose_targets()
+                        except MoveItCommanderException:
+                            pass
+                        arm.set_position_target([px, py, pz])
+                        err = None
+                        try:
+                            plan_ok, _traj, ptime, err = arm.plan()
+                        except MoveItCommanderException as e:
+                            rospy.logwarn(
+                                "[PREFLIGHT] 「%s」Z=%.3f plan err: %s | EN: plan exception",
+                                label,
+                                pz,
+                                e,
+                            )
+                            plan_ok = False
+                            ptime = 0.0
+                        en = (
+                            self._moveit_error_name(err.val)
+                            if err is not None
+                            else "UNKNOWN"
+                        )
+                        last_err_name = en
+                        last_ptime = float(ptime)
+                        last_mode = "position"
+                        if plan_ok:
+                            plan_ok_any = True
+                            ok = True
+                            rospy.loginfo(
+                                "[PREFLIGHT] 「%s」OK pos z_try=%d t=%.2fs %s | EN: OK",
+                                label,
+                                zb,
+                                last_ptime,
+                                en,
+                            )
+                            break
+                        rospy.logwarn(
+                            "[PREFLIGHT] 「%s」FAIL pos z_try=%d z=%.3f t=%.2fs %s | EN: fail",
+                            label,
+                            zb,
+                            pz,
+                            last_ptime,
+                            en,
+                        )
+                    if plan_ok_any:
+                        break
+                    continue
                 apply_goal()
                 plan_ok, _traj, ptime, err = arm.plan()
                 en = self._moveit_error_name(err.val)
@@ -957,7 +1533,7 @@ class GraspMission(object):
                 if plan_ok:
                     ok = True
                     rospy.loginfo(
-                        "视觉预检「%s」: plan_ok=True mode=%s planning_time=%.2fs err=%s",
+                        "[PREFLIGHT] 「%s」OK mode=%s t=%.2fs %s | EN: OK",
                         label,
                         mode_tag,
                         last_ptime,
@@ -965,7 +1541,7 @@ class GraspMission(object):
                     )
                     break
                 rospy.logwarn(
-                    "视觉预检「%s」: plan_ok=False mode=%s planning_time=%.2fs err=%s",
+                    "[PREFLIGHT] 「%s」FAIL mode=%s t=%.2fs %s | EN: fail",
                     label,
                     mode_tag,
                     last_ptime,
@@ -973,9 +1549,7 @@ class GraspMission(object):
                 )
             if not ok:
                 rospy.logwarn(
-                    "预检「%s」最终失败 (err=%s, last_mode=%s)："
-                    "调 offset/悬停/碰撞体，或增大 vision_workspace_radius_max_m；"
-                    "亦可关 vision_preflight_plan 或设 vision_preflight_skip_pose_if_pregrasp_fails:=false",
+                    "[PREFLIGHT] 「%s」最终失败 err=%s mode=%s | EN: preflight failed",
                     label,
                     last_err_name,
                     last_mode,
@@ -989,7 +1563,11 @@ class GraspMission(object):
             success_mode = last_mode if ok else ""
             return bool(ok), success_mode
         except Exception as ex:
-            rospy.logwarn("视觉预检异常「%s」: %s", label, ex)
+            rospy.logwarn(
+                "[PREFLIGHT] 「%s」异常: %s | EN: preflight exception",
+                label,
+                ex,
+            )
             try:
                 arm.clear_pose_targets()
             except MoveItCommanderException:
@@ -1038,9 +1616,22 @@ class GraspMission(object):
         try:
             self._arm_mgc = self._create_move_group("arm")
         except RuntimeError as e:
-            rospy.logerr("arm MoveGroupCommander: %s", e)
+            rospy.logerr(
+                "[MOVEIT] arm MoveGroupCommander: %s | EN: init failed",
+                e,
+            )
             return None
-        self._maybe_fix_trajectory_execution_dynreconf(reason="arm MoveGroup 就绪后")
+        try:
+            self._arm_mgc.set_pose_reference_frame(self.ref_frame)
+        except Exception:
+            pass
+        try:
+            self._arm_mgc.set_end_effector_link(self.ee_tcp_frame)
+        except Exception:
+            pass
+        self._maybe_fix_trajectory_execution_dynreconf(
+            reason="after_arm_MGC_ready"
+        )
         return self._arm_mgc
 
     def get_gripper_group(self):
@@ -1057,7 +1648,10 @@ class GraspMission(object):
             self._gripper_mgc.set_max_velocity_scaling_factor(0.4)
             self._gripper_mgc.set_goal_joint_tolerance(self.gripper_goal_tolerance)
         except RuntimeError as e:
-            rospy.logerr("gripper MoveGroupCommander: %s", e)
+            rospy.logerr(
+                "[MOVEIT] gripper MoveGroupCommander: %s | EN: init failed",
+                e,
+            )
             return None
         return self._gripper_mgc
 
@@ -1142,14 +1736,39 @@ class GraspMission(object):
             zd = float(self.assume_depth_m)
         fx, fy = float(self._K[0, 0]), float(self._K[1, 1])
         ppx, ppy = float(self._K[0, 2]), float(self._K[1, 2])
+        du = float(u) - ppx
+        dv = float(v) - ppy
+        epx = math.hypot(du, dv)
+        if epx < float(self.detect_refine_min_pixel_error):
+            return
         g = self.detect_refine_xy_gain
-        vx = g * (float(u) - ppx) / fx * zd
-        vy = g * (float(v) - ppy) / fy * zd
-        tgt = self.tf_refine_target_frame or self.ref_frame
+        vx = g * du / fx * zd
+        vy = g * dv / fy * zd
+        tgt = (self.detect_refine_xy_target_frame or "map").strip()
         out = transform_vector(
             self.tf_buffer, Vector3(vx, vy, 0.0), tgt, self.camera_optical_frame
         )
+        if out is None and self.tf_refine_target_frame:
+            out = transform_vector(
+                self.tf_buffer,
+                Vector3(vx, vy, 0.0),
+                self.tf_refine_target_frame,
+                self.camera_optical_frame,
+            )
         if out is None:
+            out = transform_vector(
+                self.tf_buffer,
+                Vector3(vx, vy, 0.0),
+                self.ref_frame,
+                self.camera_optical_frame,
+            )
+        if out is None:
+            rospy.logwarn_throttle(
+                8.0,
+                "refine_xy: TF(%s/roarm_base_link)<-%s 失败，跳过侧向微调",
+                tgt,
+                self.camera_optical_frame,
+            )
             return
         dx, dy = float(out.x), float(out.y)
         step = math.hypot(dx, dy)
@@ -1158,6 +1777,19 @@ class GraspMission(object):
             s = mxs / step
             dx *= s
             dy *= s
+            step = mxs
+        cap = float(self.detect_refine_max_cumulative_m)
+        cum = float(getattr(self, "_refine_xy_cumulative_m", 0.0))
+        if cap > 1e-6 and cum + step > cap:
+            allow = max(0.0, cap - cum)
+            if allow < 1e-6:
+                return
+            if step > 1e-9:
+                fac = allow / step
+                dx *= fac
+                dy *= fac
+                step = allow
+        self._refine_xy_cumulative_m = cum + step
         self.x_fwd += dx
         self.y_fwd += dy
 
@@ -1168,9 +1800,7 @@ class GraspMission(object):
         z = float(xyz[2])
         if z < self.vision_reframe_z_min or z > self.vision_reframe_z_max:
             rospy.logerr(
-                "视觉质心 %s 下 z=%.3f 超出合理工作区 [%.2f, %.2f]，"
-                "已丢弃该次视觉抓取（易触发 MoveIt TIMED_OUT）；请改善对准/深度或调整参数 vision_reframe_z_*",
-                self.ref_frame,
+                "[VISION] 蓝块 z=%.3f 超出 [%.2f,%.2f]，丢弃 | EN: blob z out of range, drop",
                 z,
                 self.vision_reframe_z_min,
                 self.vision_reframe_z_max,
@@ -1182,8 +1812,7 @@ class GraspMission(object):
             rw = float(self.vision_workspace_radius_max_m)
             if rv > rw + 0.08:
                 rospy.logwarn(
-                    "质心距臂座 %.3f m 已超过 vision_workspace_radius_max_m=%.2f；"
-                    "抓取链上将按球形边界夹紧目标（roarm 短臂）",
+                    "[VISION] 质心距臂座 %.3f m > r_max=%.2f，将径向夹紧 | EN: clamp to workspace sphere",
                     rv,
                     rw,
                 )
@@ -1226,19 +1855,352 @@ class GraspMission(object):
             )
         s = r_eff / max(rlim, 1e-9)
         rospy.logwarn(
-            "roarm 工作空间夹紧: 径向缩放 %.4f (max(norm) %.3f → 有效 %.3f m)，"
-            "预接近/下落共线保留",
+            "[WS] 工作区径向缩放 s=%.4f (||p|| %.3f→%.3f m) | EN: radial clamp, keep pre/fin colinear",
             s,
             rlim,
             r_eff,
         )
         return True, (pp * s).tolist(), (pf * s).tolist(), ""
 
+    def _adjust_grasp_targets_from_base(self, base):
+        """
+        由规划系下的蓝块质心估计 base（长度 3）生成预接近/下落点，与工作区夹紧及 z 余量一致。
+        """
+        base = np.asarray(base, dtype=np.float64).reshape(3)
+        off = np.array(self.vision_target_offset, dtype=np.float64)
+        d0 = np.array(self.vision_pregrasp_delta, dtype=np.float64)
+        d1 = np.array(self.vision_grasp_delta, dtype=np.float64)
+        p_pre = (base + off + d0).tolist()
+        p_fin = (base + off + d0 + d1).tolist()
+        ws_ok, p_pre, p_fin, ws_note = self._workspace_adjust_grasp_targets(
+            p_pre, p_fin
+        )
+        ez = float(self.vision_tcp_extra_z_m)
+        if abs(ez) > 1e-9:
+            p_pre[2] = float(p_pre[2]) + ez
+            p_fin[2] = float(p_fin[2]) + ez
+        pl = float(self.vision_grasp_plunge_extra_z_m)
+        if abs(pl) > 1e-9:
+            p_fin[2] = float(p_fin[2]) + pl
+        return ws_ok, p_pre, p_fin, ws_note
+
+    def _tcp_orient_ok_for_commit(self, arm):
+        """抓取触发：末端 EE z 轴（TF）与期望接近方向的夹角判据。"""
+        tol = float(self.grasp_commit_orient_tol_rad)
+        if tol <= 1e-9:
+            return True
+        try:
+            tfm = self.tf_buffer.lookup_transform(
+                self.ref_frame,
+                self.ee_tcp_frame,
+                rospy.Time(0),
+                rospy.Duration(0.35),
+            )
+            tr = tfm.transform.rotation
+            if _tft is not None:
+                R = _tft.quaternion_matrix(
+                    [tr.x, tr.y, tr.z, tr.w]
+                )[:3, :3]
+            else:
+                x, y, z, w = tr.x, tr.y, tr.z, tr.w
+                R = np.array(
+                    [
+                        [
+                            1 - 2 * (y * y + z * z),
+                            2 * (x * y - z * w),
+                            2 * (x * z + y * w),
+                        ],
+                        [
+                            2 * (x * y + z * w),
+                            1 - 2 * (x * x + z * z),
+                            2 * (y * z - x * w),
+                        ],
+                        [
+                            2 * (x * z - y * w),
+                            2 * (y * z + x * w),
+                            1 - 2 * (x * x + y * y),
+                        ],
+                    ],
+                    dtype=np.float64,
+                )
+            ez = R[:, 2]
+            dn = self._grasp_commit_desired_axis
+            ez = ez / max(1e-9, float(np.linalg.norm(ez)))
+            ang = math.acos(max(-1.0, min(1.0, float(np.dot(ez, dn)))))
+            return ang <= tol
+        except Exception:
+            return True
+
+    def _grasp_commit_gate(self, arm, tgt_xyz):
+        """抓取触发区：位置 + 姿态 + 可选像素全部满足。"""
+        cur = self.get_tcp_xyz_in_ref_frame(arm)
+        if cur is None:
+            return False
+        d = float(
+            np.linalg.norm(
+                np.asarray(tgt_xyz, dtype=np.float64)
+                - np.asarray(cur, dtype=np.float64)
+            )
+        )
+        if d > float(self.grasp_commit_pos_tol_m):
+            return False
+        if not self._tcp_orient_ok_for_commit(arm):
+            return False
+        px_tol = float(self.grasp_commit_pixel_tol_px)
+        if px_tol > 1e-9:
+            px_err = self._tcp_pixel_error_vs_last_detection(arm)
+            if px_err is None or px_err > px_tol:
+                return False
+        return True
+
+    def _grasp_finishing_refine(self, arm, vs0):
+        """
+        闭合前短 REFINE（对应流程 SEARCH→…→REFINE→GRASP_COMMIT 中的 REFINE 段）：
+        刷新深度并小步修正；由 grasp_commit_* 做触发区+连续帧+超时；碰撞 bumper 可打断。
+        """
+        if not self.grasp_fin_refine_enable:
+            if self.table_contact_retract_enable and getattr(
+                self, "_table_contact_seen", False
+            ):
+                self._handle_table_contact_retract(arm)
+                return False
+            return True
+        if self.table_contact_retract_enable and getattr(
+            self, "_table_contact_seen", False
+        ):
+            self._handle_table_contact_retract(arm)
+            return False
+        if (
+            self.grasp_contact_trigger_enable
+            and getattr(self, "_grasp_contact_seen", False)
+        ):
+            rospy.loginfo(
+                "[REFINE] 爪-蓝块已碰撞→跳过闭合前微调 | EN: skip refine on contact"
+            )
+            return True
+        vmin = max(0.08, float(self.vision_min_velocity_scale))
+        vs_ref = max(
+            vmin,
+            min(float(self.vision_waypoint_vel_cap), float(self.grasp_fin_refine_vel_scale)),
+        )
+        last_fin = None
+        if self._last_exec_p_fin is not None and len(self._last_exec_p_fin) == 3:
+            last_fin = np.array(self._last_exec_p_fin, dtype=np.float64)
+
+        refine_t0 = rospy.get_time()
+        self._refine_stable_ctr = 0
+        self._refine_last_tgt = None
+
+        for k in range(max(0, int(self.grasp_fin_refine_iters))):
+            if self.table_contact_retract_enable and getattr(
+                self, "_table_contact_seen", False
+            ):
+                self._handle_table_contact_retract(arm)
+                return False
+            if (
+                self.grasp_contact_trigger_enable
+                and getattr(self, "_grasp_contact_seen", False)
+            ):
+                rospy.loginfo(
+                    "[REFINE] 微调中检测到碰撞→结束微调 | EN: refine stop on contact"
+                )
+                return True
+            if bool(getattr(self, "grasp_commit_enable", False)):
+                tout = float(self.grasp_commit_refine_timeout_sec)
+                if tout > 1e-6 and (rospy.get_time() - refine_t0) >= tout:
+                    rospy.logwarn(
+                        "[GRASP_COMMIT] refine %.1fs 超时→锁定最近目标并闭爪 | EN: timeout commit",
+                        tout,
+                    )
+                    if self._refine_last_tgt is not None:
+                        self._last_exec_p_fin = list(self._refine_last_tgt)
+                    else:
+                        cur_to = self.get_tcp_xyz_in_ref_frame(arm)
+                        if cur_to is not None:
+                            self._last_exec_p_fin = [
+                                float(cur_to[0]),
+                                float(cur_to[1]),
+                                float(cur_to[2]),
+                            ]
+                    return True
+            rospy.sleep(max(0.0, float(self.grasp_fin_refine_settle_sec)))
+            uv = self.detect_blue_uv()
+            if uv is None:
+                rospy.logwarn_throttle(
+                    4.0,
+                    "[REFINE] 闭爪前微调 %d: 无蓝块 | EN: no blob in frame",
+                    k + 1,
+                )
+                continue
+            pc = self.point_cam(uv[0], uv[1])
+            if pc is None:
+                continue
+            pb = transform_point(
+                self.tf_buffer,
+                pc,
+                self.ref_frame,
+                self.camera_optical_frame,
+            )
+            if pb is None:
+                continue
+            raw = (pb.x, pb.y, pb.z)
+            if not self.vision_xyz_plausible(raw):
+                continue
+            ws_ok, _p_pre, p_fin, _note = self._adjust_grasp_targets_from_base(raw)
+            if not ws_ok:
+                continue
+            tgt = np.array([float(p_fin[0]), float(p_fin[1]), float(p_fin[2])], dtype=np.float64)
+            self._refine_last_tgt = [
+                float(tgt[0]),
+                float(tgt[1]),
+                float(tgt[2]),
+            ]
+
+            if bool(getattr(self, "grasp_commit_enable", False)):
+                gate = self._grasp_commit_gate(arm, tgt)
+                nf = max(0, int(self.grasp_commit_stable_frames))
+                need = nf if nf > 0 else 1
+                if gate:
+                    self._refine_stable_ctr += 1
+                    rospy.loginfo_throttle(
+                        0.75,
+                        "[GRASP_COMMIT] stable %d/%d gate=pos+orient(+px?) | EN: zone",
+                        self._refine_stable_ctr,
+                        need,
+                    )
+                else:
+                    self._refine_stable_ctr = 0
+                if self._refine_stable_ctr >= need:
+                    rospy.loginfo(
+                        "[GRASP_COMMIT] 冻结目标(%.3f,%.3f,%.3f)→停止微调并闭爪 | EN: freeze",
+                        tgt[0],
+                        tgt[1],
+                        tgt[2],
+                    )
+                    self._last_exec_p_fin = [
+                        float(tgt[0]),
+                        float(tgt[1]),
+                        float(tgt[2]),
+                    ]
+                    return True
+            else:
+                cur_es = self.get_tcp_xyz_in_ref_frame(arm)
+                es_m = float(self.grasp_fin_refine_early_stop_tcp_m)
+                if cur_es is not None and es_m > 1e-9:
+                    d_es = float(
+                        np.linalg.norm(
+                            tgt - np.asarray(cur_es, dtype=np.float64)
+                        )
+                    )
+                    if d_es <= es_m:
+                        rospy.loginfo(
+                            "[REFINE] 微调 %d: TCP 距刷新下落点 %.4f m≤%.4f→提前闭爪 | EN: early stop tcp",
+                            k + 1,
+                            d_es,
+                            es_m,
+                        )
+                        self._last_exec_p_fin = [
+                            float(tgt[0]),
+                            float(tgt[1]),
+                            float(tgt[2]),
+                        ]
+                        return True
+                es_px = float(self.grasp_fin_refine_early_stop_pixel_px)
+                if es_px > 1e-9:
+                    px_err = self._tcp_pixel_error_vs_last_detection(arm)
+                    if px_err is not None and px_err <= es_px:
+                        rospy.loginfo(
+                            "[REFINE] 微调 %d: 像素偏差 %.1f≤%.1f→提前闭爪 | EN: early stop px",
+                            k + 1,
+                            px_err,
+                            es_px,
+                        )
+                        self._last_exec_p_fin = [
+                            float(tgt[0]),
+                            float(tgt[1]),
+                            float(tgt[2]),
+                        ]
+                        return True
+
+            if last_fin is not None:
+                delta = tgt - last_fin
+                dn = float(np.linalg.norm(delta))
+                if dn < float(self.grasp_fin_refine_min_disp_m):
+                    rospy.loginfo(
+                        "[REFINE] 微调 %d: |Δ|=%.4f 过小跳过 | EN: skip small delta",
+                        k + 1,
+                        dn,
+                    )
+                    continue
+                mx = float(self.grasp_fin_refine_max_step_m)
+                if dn > mx:
+                    tgt = last_fin + delta / dn * mx
+                    rospy.loginfo(
+                        "[REFINE] 微调 %d: 限幅 %.4f→%.4f m | EN: delta clamped",
+                        k + 1,
+                        dn,
+                        mx,
+                    )
+
+            move_goal = [float(tgt[0]), float(tgt[1]), float(tgt[2])]
+            cur = self.get_tcp_xyz_in_ref_frame(arm)
+            if cur is None:
+                continue
+            if float(np.linalg.norm(np.asarray(move_goal, dtype=np.float64) - cur)) < float(
+                self.grasp_fin_refine_min_disp_m
+            ):
+                rospy.loginfo(
+                    "[REFINE] 微调 %d: TCP 已到位 | EN: already in tolerance",
+                    k + 1,
+                )
+                self._last_exec_p_fin = list(move_goal)
+                last_fin = np.asarray(move_goal, dtype=np.float64)
+                continue
+
+            self._apply_vision_execution_tolerances(arm)
+            self.configure_arm_move_group(
+                arm,
+                vel_scaling=max(
+                    float(self.grasp_fin_refine_vel_scale),
+                    float(self.vision_ompl_plan_vel_scale) * 0.85,
+                ),
+                accel_scaling=max(
+                    float(self.grasp_fin_refine_vel_scale),
+                    float(self.vision_ompl_plan_accel_scale) * 0.85,
+                ),
+            )
+            self._vision_wp_pose_hint = ""
+
+            ok_wp = self._go_vision_waypoint(
+                arm,
+                move_goal,
+                "闭合前微调%d" % (k + 1),
+                vs_ref,
+            )
+            if ok_wp:
+                self._last_exec_p_fin = list(move_goal)
+                last_fin = np.asarray(move_goal, dtype=np.float64)
+                rospy.loginfo(
+                    "[REFINE] 微调 %d OK goal(%.3f,%.3f,%.3f) | EN: refine OK",
+                    k + 1,
+                    move_goal[0],
+                    move_goal[1],
+                    move_goal[2],
+                )
+            else:
+                rospy.logwarn(
+                    "[REFINE] 微调 %d MoveIt 失败 | EN: refine waypoint failed",
+                    k + 1,
+                )
+        return True
+
     def print_blue_pose(self, u, v):
         """质心在相机光学系与 planning_frame 下的估计（米），供终端查看。"""
         pc = self.point_cam(u, v)
         if pc is None:
-            rospy.logwarn("蓝块位姿: 无 camera_info 或深度无效")
+            rospy.logwarn(
+                "[VISION] 无深度或 camera_info | EN: no depth / camera_info"
+            )
             return None
         pb = transform_point(
             self.tf_buffer, pc, self.ref_frame, self.camera_optical_frame
@@ -1247,37 +2209,24 @@ class GraspMission(object):
             raw = (pb.x, pb.y, pb.z)
             pl = self.vision_xyz_plausible(raw)
             rospy.loginfo(
-                "\n======== 蓝块估计位姿（质心）========\n"
-                "  相机光学系 %s (m): x=%.4f y=%.4f z=%.4f\n"
-                "  规划系 %s (m): x=%.4f y=%.4f z=%.4f\n"
-                "  工作区检查 z∈[%.2f,%.2f]: %s\n"
-                "========================================",
-                self.camera_optical_frame,
-                pc.x,
-                pc.y,
-                pc.z,
+                "[VISION] 质心 %s (%.3f,%.3f,%.3f) cam_opt(%.3f,%.3f,%.3f) %s | EN: blob pose %s",
                 self.ref_frame,
                 pb.x,
                 pb.y,
                 pb.z,
-                self.vision_reframe_z_min,
-                self.vision_reframe_z_max,
-                "通过" if pl else "未通过（本次抓取将不用视觉位姿）",
+                pc.x,
+                pc.y,
+                pc.z,
+                "OK" if pl else "reject",
+                "valid" if pl else "rejected",
             )
             if pl:
                 return raw
             return None
-        rospy.loginfo(
-            "\n======== 蓝块估计位姿（质心）========\n"
-            "  相机光学系 %s (m): x=%.4f y=%.4f z=%.4f\n"
-            "  规划系 %s: TF 失败（检查 TF 树与 %s）\n"
-            "========================================",
-            self.camera_optical_frame,
-            pc.x,
-            pc.y,
-            pc.z,
+        rospy.logwarn(
+            "[VISION] TF %s←optical 失败 | EN: TF camera→%s failed",
             self.ref_frame,
-            self.camera_optical_frame,
+            self.ref_frame,
         )
         return None
 
@@ -1287,7 +2236,10 @@ class GraspMission(object):
             arm.set_goal_position_tolerance(self.vision_goal_position_tolerance)
             arm.set_goal_orientation_tolerance(self.vision_goal_orientation_tolerance)
         except Exception as e:
-            rospy.logwarn("视觉容差: %s", e)
+            rospy.logwarn(
+                "[MOVEIT] 设置视觉执行容差失败: %s | EN: goal tolerance failed",
+                e,
+            )
 
     def _apply_preflight_relaxed_tolerances(self, arm):
         """预检：在 vision_* 基础上再放宽，便于 OMPL/IK 命中可行目标。"""
@@ -1308,7 +2260,10 @@ class GraspMission(object):
             arm.set_goal_position_tolerance(pp)
             arm.set_goal_orientation_tolerance(po)
         except Exception as e:
-            rospy.logwarn("预检容差: %s", e)
+            rospy.logwarn(
+                "[PREFLIGHT] 设置宽松容差失败: %s | EN: relaxed tolerance failed",
+                e,
+            )
 
     def _preflight_goal_pose_approach(self, arm, pt):
         """末端 +Z 对齐接近轴（与笛卡尔段一致），便于 5 自由度在约束姿态下求 IK。"""
@@ -1319,8 +2274,12 @@ class GraspMission(object):
         cp = None
         try:
             cp = arm.get_current_pose().pose
-            fp = [float(cp.position.x), float(cp.position.y), float(cp.position.z)]
         except Exception:
+            cp = None
+        fp_xyz = self.get_tcp_xyz_in_ref_frame(arm)
+        if fp_xyz is not None:
+            fp = [float(fp_xyz[0]), float(fp_xyz[1]), float(fp_xyz[2])]
+        else:
             fp = [0.0, 0.0, float(pt[2])]
         qh = self._quat_tool_axis_toward(
             fp,
@@ -1433,7 +2392,11 @@ class GraspMission(object):
         try:
             q0 = arm.get_current_joint_values()
         except Exception as e:
-            rospy.logwarn("%s 关节前插跳过: %s", label, e)
+            rospy.logwarn(
+                "[ARM] %s 关节前插跳过: %s | EN: joint lead-in skip",
+                label,
+                e,
+            )
             return True
         if len(q0) != 5:
             return True
@@ -1442,7 +2405,12 @@ class GraspMission(object):
         vmin = max(0.08, min(0.95, float(self.vision_min_velocity_scale)))
         vcap = max(0.2, min(1.0, float(self.vision_waypoint_vel_cap)))
         vs = max(vmin, min(vcap, float(vs0)))
-        rospy.loginfo("%s 关节空间前插 %d 步 (向 seed 共 %.0f%%)", label, n, frac * 100.0)
+        rospy.loginfo(
+            "[ARM] %s 关节前插 n=%d →seed %.0f%% | EN: joint lead-in",
+            label,
+            n,
+            frac * 100.0,
+        )
         for i in range(1, n + 1):
             t = (i / float(n)) * frac
             qi = [float(q0[j]) + (seed[j] - float(q0[j])) * t for j in range(5)]
@@ -1457,8 +2425,13 @@ class GraspMission(object):
                 pass
             arm.set_joint_value_target(qi)
             lab = "%s 关节插%d/%d" % (label, i, n)
+            if self._consume_table_contact_retract(arm):
+                return False
             if not arm.go(wait=True):
-                rospy.logwarn("%s 失败", lab)
+                rospy.logwarn(
+                    "[ARM] %s 失败 | EN: joint waypoint failed",
+                    lab,
+                )
                 return False
         return True
 
@@ -1476,14 +2449,20 @@ class GraspMission(object):
             self.vision_joint_lead_in_min_leg_m
         ):
             if not self._go_vision_joint_lead_in_toward_seed(arm, label, vs0):
-                rospy.logwarn("%s 关节前插失败，仍用原起点折线", label)
+                rospy.logwarn(
+                    "[ARM] %s 关节前插失败，沿用原折线起点 | EN: lead-in fail, keep p0",
+                    label,
+                )
             else:
                 joint_lead_ok = True
-                try:
-                    cp = arm.get_current_pose().pose.position
-                    p0_list = [float(cp.x), float(cp.y), float(cp.z)]
-                except Exception as e:
-                    rospy.logwarn("%s 关节前插后取末端失败: %s", label, e)
+                cpv = self.get_tcp_xyz_in_ref_frame(arm)
+                if cpv is not None:
+                    p0_list = [float(cpv[0]), float(cpv[1]), float(cpv[2])]
+                else:
+                    rospy.logwarn(
+                        "[ARM] %s 关节前插后无 TCP(TF) | EN: no TCP after lead-in",
+                        label,
+                    )
                     joint_lead_ok = False
         d_after = float(
             np.linalg.norm(
@@ -1492,26 +2471,31 @@ class GraspMission(object):
         )
         if joint_lead_ok:
             rospy.loginfo(
-                "%s 关节前插后末端弦长 %.3f m (前插前 %.3f m)",
+                "[ARM] %s 关节前插弦长 %.3f→%.3f m | EN: chord after lead-in",
                 label,
-                d_after,
                 dtot,
+                d_after,
             )
         if joint_lead_ok and self.vision_polyline_skip_cartesian_micro_after_joint:
-            rospy.loginfo("%s 跳过笛卡尔微步，直接主折线", label)
+            rospy.loginfo(
+                "[POLY] %s 跳过笛卡尔微步 | EN: skip Cartesian micro-steps",
+                label,
+            )
             return self._go_vision_polyline(arm, p0_list, p1, label, vs0)
         prefix = self._polyline_lead_in_waypoints(p0_list, p1)
         if not prefix:
             return self._go_vision_polyline(arm, p0_list, p1, label, vs0)
         if self.vision_fix_trajectory_execution_via_dynreconf:
-            self._maybe_fix_trajectory_execution_dynreconf(reason="视觉折线微步 %s" % label)
+            self._maybe_fix_trajectory_execution_dynreconf(
+                reason="vision_polyline_micro %s" % label
+            )
         dtot = float(
             np.linalg.norm(
                 np.array(p1, dtype=np.float64) - np.array(p0_list, dtype=np.float64)
             )
         )
         rospy.loginfo(
-            "%s 折线前微步 %d 点 (弦长≈%.3f m, 步≈%.3f m)",
+            "[POLY] %s micro n=%d L=%.3f step=%.3f | EN: lead-in micro waypoints",
             label,
             len(prefix),
             dtot,
@@ -1540,10 +2524,13 @@ class GraspMission(object):
         if want_cart and not skip_cs:
             if self._go_vision_cartesian_chunks(arm, p0, p1, label):
                 return True
-            rospy.logwarn("%s 笛卡尔失败，回退 OMPL …", label)
+            rospy.logwarn(
+                "[CART] %s 失败→OMPL | EN: cartesian fail, fallback OMPL",
+                label,
+            )
         elif want_cart and skip_cs:
             rospy.logwarn(
-                "%s 跨度 %.3f m > %.3f m，跳过笛卡尔仅用 OMPL",
+                "[CART] %s L=%.3f>%.3f 跳过笛卡尔 | EN: skip cartesian (span)",
                 label,
                 dleg,
                 th,
@@ -1576,22 +2563,28 @@ class GraspMission(object):
         t0 = time.time()
         ok = arm.go(wait=True)
         dt = time.time() - t0
-        try:
-            ep = arm.get_current_pose().pose.position
+        ep = self.get_tcp_xyz_in_ref_frame(arm)
+        if ep is not None:
             rospy.loginfo(
-                "视觉前关节预伸展: ok=%s 用时=%.2fs 末端约在(%.3f,%.3f,%.3f)",
+                "[ARM] reach_seed ok=%s t=%.2fs TCP(%.3f,%.3f,%.3f) | EN: reach seed joints",
                 ok,
                 dt,
-                ep.x,
-                ep.y,
-                ep.z,
+                ep[0],
+                ep[1],
+                ep[2],
             )
-        except Exception:
-            rospy.loginfo("视觉前关节预伸展: ok=%s 用时=%.2fs", ok, dt)
+        else:
+            rospy.loginfo(
+                "[ARM] reach_seed ok=%s t=%.2fs | EN: reach seed joints",
+                ok,
+                dt,
+            )
         if not ok:
             rospy.logwarn(
-                "视觉前关节预伸展未完全到位（仍继续视觉分段）；可调 vision_reach_seed_joints 或略降速度"
+                "[ARM] reach_seed 未完全到位，继续视觉 | EN: seed incomplete, continue"
             )
+        if self._consume_table_contact_retract(arm):
+            return False
         return True
 
     @staticmethod
@@ -1680,7 +2673,11 @@ class GraspMission(object):
                     tgt.orientation.z = qh[2]
                     tgt.orientation.w = qh[3]
         except Exception as e:
-            rospy.logwarn("%s get_current_pose 失败: %s", label, e)
+            rospy.logwarn(
+                "[MOVEIT] %s get_current_pose 失败: %s | EN: get pose failed",
+                label,
+                e,
+            )
             return False
         vcap = min(1.0, max(0.15, float(self.vision_waypoint_vel_cap)))
         try:
@@ -1721,7 +2718,7 @@ class GraspMission(object):
             nd = len(dense) if dense else 0
             best_ptag = "zero_frac(dense_n=%d)" % nd
         rospy.loginfo(
-            "%s cartesian best_fraction=%.3f eef_step=%.4f keep_ori=%s axis_sign=%.1f wp=%s",
+            "[CART] %s frac=%.3f step=%.4f keep_ori=%s axis=%.1f %s | EN: cartesian path",
             label,
             best_frac,
             best_step,
@@ -1731,7 +2728,7 @@ class GraspMission(object):
         )
         if best_traj is None or best_frac < min_frac:
             rospy.logwarn(
-                "%s 笛卡尔路径过短 best_fraction=%.3f < min=%.3f",
+                "[CART] %s 路径过短 frac=%.3f < min=%.3f | EN: cartesian too short",
                 label,
                 best_frac,
                 min_frac,
@@ -1740,7 +2737,11 @@ class GraspMission(object):
         try:
             return bool(arm.execute(best_traj, wait=True))
         except MoveItCommanderException as e:
-            rospy.logwarn("%s execute: %s", label, e)
+            rospy.logwarn(
+                "[CART] %s execute: %s | EN: execute failed",
+                label,
+                e,
+            )
             return False
 
     def _go_vision_cartesian_chunks(self, arm, p0, p1, label):
@@ -1752,13 +2753,17 @@ class GraspMission(object):
             t = i / float(n)
             pt = (p0a + (p1a - p0a) * t).tolist()
             lab = "%s %d/%d" % (label, i, n)
+            if self._consume_table_contact_retract(arm):
+                return False
             if not self._execute_cartesian_line_to_xyz(arm, pt, lab):
                 return False
         return True
 
     def _go_vision_polyline(self, arm, p0, p1, label, vs0):
         if self.vision_fix_trajectory_execution_via_dynreconf:
-            self._maybe_fix_trajectory_execution_dynreconf(reason="视觉折线 %s" % label)
+            self._maybe_fix_trajectory_execution_dynreconf(
+                reason="vision_polyline %s" % label
+            )
         try:
             arm.set_planning_time(float(self.vision_ompl_planning_time))
             arm.set_num_planning_attempts(
@@ -1767,13 +2772,20 @@ class GraspMission(object):
         except Exception:
             pass
         n = self._vision_num_segments(p0, p1)
+        if "预接近" in label:
+            cap = max(1, int(self.vision_pregrasp_max_segments))
+            n = min(n, cap)
         wps = self._interp_line_xyz(p0, p1, n)
         step_len = float(np.linalg.norm(np.array(wps[0]) - np.array(p0))) if wps else 0.0
         rospy.loginfo(
-            "视觉分段 %s: %d 段 (欧氏距≈%.3f m, 首段步长≈%.3f m)",
+            "[POLY] %s segments=%d chord_L=%.3f step0=%.3f | EN: OMPL polyline",
             label,
             n,
-            float(np.linalg.norm(np.array(p1, dtype=np.float64) - np.array(p0, dtype=np.float64))),
+            float(
+                np.linalg.norm(
+                    np.array(p1, dtype=np.float64) - np.array(p0, dtype=np.float64)
+                )
+            ),
             step_len,
         )
         for i, pt in enumerate(wps):
@@ -1787,6 +2799,8 @@ class GraspMission(object):
         vmin = max(0.08, min(0.95, float(self.vision_min_velocity_scale)))
         vcap = max(0.2, min(1.0, float(self.vision_waypoint_vel_cap)))
         for att in range(n_att):
+            if self._consume_table_contact_retract(arm):
+                return False
             if att < 2:
                 vs = min(vcap, base_vs * (1.45 ** att))
             else:
@@ -1800,20 +2814,43 @@ class GraspMission(object):
                 pass
             try:
                 hint = str(getattr(self, "_vision_wp_pose_hint", "") or "")
-                if self.vision_cartesian_use_pose:
-                    arm.set_pose_target(self._current_ee_pose_at_xyz(arm, pt))
-                elif self.vision_ompl_lock_wrist_orientation:
-                    arm.set_pose_target(self._current_ee_pose_at_xyz(arm, pt))
-                elif hint == "pose_approach_axis":
-                    arm.set_pose_target(self._preflight_goal_pose_approach(arm, pt))
-                elif hint == "pose_retained":
-                    arm.set_pose_target(self._current_ee_pose_at_xyz(arm, pt))
+                use_pure_position = (
+                    not self.vision_cartesian_use_pose
+                    and not self.vision_ompl_lock_wrist_orientation
+                    and hint not in ("pose_approach_axis", "pose_retained")
+                )
+                if use_pure_position and self.vision_5dof_use_plan_execute:
+                    try:
+                        arm.set_planning_time(float(self.vision_ompl_planning_time))
+                        arm.set_num_planning_attempts(
+                            max(1, int(self.vision_ompl_planning_attempts))
+                        )
+                    except Exception:
+                        pass
+                    if self._vision_plan_execute_position_z_backoff(
+                        arm, pt, label, vs
+                    ):
+                        return True
                 else:
-                    arm.set_position_target(pt)
-                if arm.go(wait=True):
-                    return True
+                    if self.vision_cartesian_use_pose:
+                        arm.set_pose_target(self._current_ee_pose_at_xyz(arm, pt))
+                    elif self.vision_ompl_lock_wrist_orientation:
+                        arm.set_pose_target(self._current_ee_pose_at_xyz(arm, pt))
+                    elif hint == "pose_approach_axis":
+                        arm.set_pose_target(self._preflight_goal_pose_approach(arm, pt))
+                    elif hint == "pose_retained":
+                        arm.set_pose_target(self._current_ee_pose_at_xyz(arm, pt))
+                    else:
+                        arm.set_position_target(pt)
+                    if arm.go(wait=True):
+                        return True
             except MoveItCommanderException as e:
-                rospy.logwarn("%s att %d: %s", label, att + 1, e)
+                rospy.logwarn(
+                    "[MOVEIT] %s 尝试 %d: %s | EN: waypoint attempt",
+                    label,
+                    att + 1,
+                    e,
+                )
             try:
                 arm.stop()
             except Exception:
@@ -1839,16 +2876,68 @@ class GraspMission(object):
         gripper.set_joint_value_target([v])
         return gripper.go(wait=True)
 
+    def _close_gripper_after_approach(self, gripper):
+        """
+        默认一次 MoveIt 到 gripper_close。
+        可选增量闭合：每小步检查夹爪关节 |effort|，超 grasp_touch_effort_abs 视为已顶到物体，
+        触物后仍发一次目标位姿 gripper_close（可略大于 0 留余量，避免全闭挤飞方块）。
+        """
+        tgt = float(self.gripper_close)
+        tgt = max(0.0, min(tgt, float(self.gripper_joint_upper)))
+        if not self.grasp_incremental_close_enable:
+            gripper.set_joint_value_target([tgt])
+            return gripper.go(wait=True)
+        p0 = self._gripper_joint_pos
+        if p0 is None:
+            gripper.set_joint_value_target([tgt])
+            return gripper.go(wait=True)
+        p0 = float(p0)
+        n = max(2, int(self.grasp_incremental_close_steps))
+        thr = max(0.0, float(self.grasp_touch_effort_abs))
+        for k in range(1, n + 1):
+            alpha = k / float(n)
+            cmd = p0 + (tgt - p0) * alpha
+            cmd = max(0.0, min(cmd, float(self.gripper_joint_upper)))
+            gripper.set_joint_value_target([cmd])
+            if not gripper.go(wait=True):
+                rospy.logwarn(
+                    "[GRIP] 增量闭合 %d/%d 失败 | EN: incremental close failed",
+                    k,
+                    n,
+                )
+                return False
+            rospy.sleep(0.03)
+            if thr > 1e-9:
+                eff = self._gripper_joint_effort
+                if eff is not None and abs(float(eff)) >= thr and cmd > tgt + 0.06:
+                    rospy.loginfo(
+                        "[GRIP] |eff|=%.3f≥%.3f 触物推测→最终闭合 tgt=%.3f | EN: touch, final close",
+                        abs(float(eff)),
+                        thr,
+                        tgt,
+                    )
+                    break
+        gripper.set_joint_value_target([tgt])
+        return gripper.go(wait=True)
+
     def _joint_pregrasp_grasp(self, arm, gripper):
+        if self._consume_table_contact_retract(arm):
+            return False
         if not self._open_gripper_wide(gripper):
-            rospy.logerr("预抓取：夹爪全开失败（检查 gripper_open_max / 冲突轨迹）")
+            rospy.logerr(
+                "[GRIP] 爪全开失败 | EN: gripper open-wide failed"
+            )
             return False
         arm.clear_pose_targets()
         self.configure_arm_move_group(arm)
         arm.set_joint_value_target([float(x) for x in self.pregrasp_joints])
+        if self._consume_table_contact_retract(arm):
+            return False
         if not arm.go(wait=True):
             return False
         arm.set_joint_value_target([float(x) for x in self.grasp_joints])
+        if self._consume_table_contact_retract(arm):
+            return False
         if not arm.go(wait=True):
             return False
         return True
@@ -1858,14 +2947,21 @@ class GraspMission(object):
         gripper = self.get_gripper_group()
         if arm is None or gripper is None:
             return False
+        self._grasp_contact_seen = False
+        self._table_contact_seen = False
+        self._grasp_table_contact_abort_mission = False
+        self._refine_stable_ctr = 0
         self.configure_arm_move_group(arm)
         gripper.set_max_velocity_scaling_factor(0.4)
         gripper.set_goal_joint_tolerance(self.gripper_goal_tolerance)
         arm.set_pose_reference_frame(self.ref_frame)
         self._vision_wp_pose_hint = ""
+        self._last_exec_p_fin = None
 
         if not self._open_gripper_wide(gripper):
-            rospy.logerr("夹爪打开 MoveIt 失败（gripper_open_max）")
+            rospy.logerr(
+                "[GRIP] 开爪 MoveIt 失败 | EN: open gripper failed"
+            )
             return False
 
         use_vis = vision_xyz is not None and len(vision_xyz) == 3
@@ -1875,13 +2971,17 @@ class GraspMission(object):
         if use_vis:
             base = np.array(vision_xyz, dtype=np.float64)
             off = np.array(self.vision_target_offset, dtype=np.float64)
-            d0 = np.array(self.vision_pregrasp_delta, dtype=np.float64)
-            d1 = np.array(self.vision_grasp_delta, dtype=np.float64)
-            p_pre = (base + off + d0).tolist()
-            p_fin = (base + off + d0 + d1).tolist()
-            ws_ok, p_pre, p_fin, ws_note = self._workspace_adjust_grasp_targets(
-                p_pre, p_fin
+            ws_ok, p_pre, p_fin, ws_note = self._adjust_grasp_targets_from_base(base)
+            rospy.loginfo(
+                "[GRASP] 目标 z_pre=%.3f z_fin=%.3f m | EN: approach/grasp heights",
+                float(p_pre[2]),
+                float(p_fin[2]),
             )
+            self._last_exec_p_fin = [
+                float(p_fin[0]),
+                float(p_fin[1]),
+                float(p_fin[2]),
+            ]
             try:
                 arm.clear_pose_targets()
             except MoveItCommanderException:
@@ -1889,9 +2989,13 @@ class GraspMission(object):
             try:
                 # 每次进入视觉段前再写一次，减轻 RViz 在运行中途改 trajectory_execution
                 if time.time() - self._last_traj_dynreconf_wall > 3.0:
-                    self._maybe_fix_trajectory_execution_dynreconf(reason="视觉抓取前")
+                    self._maybe_fix_trajectory_execution_dynreconf(
+                        reason="before_vision_grasp"
+                    )
                 if self.vision_joint_staging_enable:
-                    rospy.loginfo("vision_joint_staging → pregrasp_joints …")
+                    rospy.loginfo(
+                        "[ARM] staging→pregrasp | EN: staging to pregrasp joints"
+                    )
                     self.configure_arm_move_group(
                         arm,
                         vel_scaling=max(
@@ -1910,25 +3014,22 @@ class GraspMission(object):
                     )
                     if not arm.go(wait=True):
                         rospy.logwarn(
-                            "staging 未到 pregrasp_joints，继续 seed/视觉"
+                            "[ARM] staging 失败，继续 | EN: staging failed, continue"
                         )
                 p_pre_arr = np.asarray(p_pre, dtype=np.float64)
                 d_before_seed = None
                 if self.vision_reach_seed_enable:
-                    try:
-                        cpb = arm.get_current_pose()
-                        pb = np.array(
-                            [
-                                cpb.pose.position.x,
-                                cpb.pose.position.y,
-                                cpb.pose.position.z,
-                            ],
-                            dtype=np.float64,
-                        )
+                    pb = self.get_tcp_xyz_in_ref_frame(arm)
+                    if pb is not None:
                         d_before_seed = float(np.linalg.norm(p_pre_arr - pb))
-                    except Exception as ex:
-                        rospy.logwarn("视觉 seed 前取末端位姿失败: %s", ex)
-                self._go_vision_reach_seed(arm)
+                    else:
+                        rospy.logwarn_throttle(
+                            2.0,
+                            "[TF] seed 前无 TCP | EN: no TCP before seed",
+                        )
+                if not self._go_vision_reach_seed(arm):
+                    self._reset_vision_execution_tolerances(arm)
+                    return False
                 self._apply_vision_execution_tolerances(arm)
                 self.configure_arm_move_group(
                     arm,
@@ -1938,7 +3039,7 @@ class GraspMission(object):
                 skip_pose_execute = not ws_ok
                 if not ws_ok:
                     rospy.logerr(
-                        "%s → 跳过视觉 OMPL/预检，仅尝试关节 pregrasp/grasp",
+                        "[WS] 工作区: %s →关节备用 | EN: workspace, joint fallback",
                         ws_note,
                     )
                 ok_pf_pre, mode_pre = True, "position"
@@ -1955,8 +3056,7 @@ class GraspMission(object):
                         and not ok_pf_pre
                     ):
                         rospy.logwarn(
-                            "预检：预接近点无可行规划 → 跳过 Pose 末端链，"
-                            "直接尝试关节 pregrasp/grasp（排障：先区分无解与执行超时）"
+                            "[PREFLIGHT] 预接近预检失败→跳过末端链 | EN: skip pose chain"
                         )
                         skip_pose_execute = True
                 base_vs = self.vision_cartesian_vel_scale
@@ -1967,16 +3067,16 @@ class GraspMission(object):
                 )
                 ok_vis = False
                 if not skip_pose_execute:
-                    try:
-                        cp = arm.get_current_pose()
+                    p_xyz = self.get_tcp_xyz_in_ref_frame(arm)
+                    if p_xyz is not None:
                         p_cur = [
-                            float(cp.pose.position.x),
-                            float(cp.pose.position.y),
-                            float(cp.pose.position.z),
+                            float(p_xyz[0]),
+                            float(p_xyz[1]),
+                            float(p_xyz[2]),
                         ]
-                    except Exception as e:
+                    else:
                         rospy.logwarn(
-                            "get_current_pose 失败 (%s)，起点用质心近似", e
+                            "[TF] 无 TCP，用质心+offset 近似起点 | EN: TCP missing, centroid seed"
                         )
                         p_cur = (base + off).tolist()
                     dist_pre = float(
@@ -1992,8 +3092,7 @@ class GraspMission(object):
                         > d_before_seed + self.vision_reach_seed_revert_margin_m
                     ):
                         rospy.logwarn(
-                            "关节预伸展使末端离预接近点更远 (%.3f m → %.3f m)，"
-                            "回退 arm_ready_joints（常见：seed 构型与视觉目标在 roarm_base_link 下 z 方向相反）",
+                            "[ARM] seed 变差 %.3f→%.3f m，回退 arm_ready | EN: seed worse, revert",
                             d_before_seed,
                             dist_pre,
                         )
@@ -2019,23 +3118,20 @@ class GraspMission(object):
                             vel_scaling=self.vision_ompl_plan_vel_scale,
                             accel_scaling=self.vision_ompl_plan_accel_scale,
                         )
-                        try:
-                            cp = arm.get_current_pose()
+                        p_xyz2 = self.get_tcp_xyz_in_ref_frame(arm)
+                        if p_xyz2 is not None:
                             p_cur = [
-                                float(cp.pose.position.x),
-                                float(cp.pose.position.y),
-                                float(cp.pose.position.z),
+                                float(p_xyz2[0]),
+                                float(p_xyz2[1]),
+                                float(p_xyz2[2]),
                             ]
-                        except Exception:
-                            pass
                         dist_pre = float(
                             np.linalg.norm(
                                 p_pre_arr - np.array(p_cur, dtype=np.float64)
                             )
                         )
                     rospy.loginfo(
-                        "视觉接近: mode=%s 预接近欧氏距≈%.3f m (seed/回退后末端)；"
-                        "预检成功策略 pre=%s fin=%s",
+                        "[VISION] 接近 mode=%s d_tcp_pre=%.3f m pre=%s fin=%s | EN: approach",
                         self.vision_path_mode,
                         dist_pre,
                         mode_pre,
@@ -2047,40 +3143,88 @@ class GraspMission(object):
                             arm, p_cur, p_pre, "预接近", vs0
                         )
                         self._vision_wp_pose_hint = mode_fin if ok_pf_fin else ""
-                        ok_vis = leg_a and self._vision_motion_leg(
-                            arm, p_pre, p_fin, "下落", vs0
+                        ok_vis = leg_a and self._vision_motion_leg_fin_with_xy(
+                            arm, p_pre, p_fin, vs0
                         )
                     elif self.vision_use_segmented_pose:
                         leg_a = self._go_vision_polyline_with_leadin(
                             arm, p_cur, p_pre, "预接近", vs0
                         )
                         self._vision_wp_pose_hint = mode_fin if ok_pf_fin else ""
-                        ok_vis = leg_a and self._go_vision_polyline_with_leadin(
-                            arm, p_pre, p_fin, "下落", vs0
+                        ok_vis = leg_a and self._go_vision_polyline_to_fin_with_xy(
+                            arm, p_pre, p_fin, vs0
                         )
                     else:
                         leg_a = self._go_vision_waypoint(
                             arm, p_pre, "预接近", vs0
                         )
                         self._vision_wp_pose_hint = mode_fin if ok_pf_fin else ""
-                        ok_vis = leg_a and self._go_vision_waypoint(
-                            arm, p_fin, "下落", vs0
+                        ok_vis = leg_a and self._go_vision_fin_waypoint_with_xy(
+                            arm, p_fin, vs0
                         )
+                    if ok_vis:
+                        if not self._grasp_finishing_refine(arm, vs0):
+                            ok_vis = False
 
                 if not ok_vis:
-                    rospy.logwarn(
-                        "视觉两步 Pose 失败或已跳过（常见 ABORTED:TIMED_OUT / 预检无解）；"
-                        "将尝试关节备用 pregrasp/grasp"
-                    )
-                    if not self._joint_pregrasp_grasp(arm, gripper):
+                    if getattr(self, "_grasp_table_contact_abort_mission", False):
                         self._reset_vision_execution_tolerances(arm)
                         return False
+                    rospy.logwarn(
+                        "[VISION] 末端链失败→关节抓取 | EN: pose chain fail, joint grasp"
+                    )
+                    if not self._joint_pregrasp_grasp(arm, gripper):
+                        ok_fc, fc_why, fc_met = self._force_close_grasp_allowed(
+                            arm, p_fin
+                        )
+                        if ok_fc:
+                            rospy.logwarn(
+                                "[GRASP] 关节备用失败但强制闭爪(%s=%s)→仍闭爪 | EN: force close",
+                                fc_why,
+                                (
+                                    ("%.3f" % fc_met)
+                                    if fc_why == "tcp_dist_m"
+                                    else (
+                                        ("%.1fpx" % fc_met)
+                                        if fc_why == "pixel_err"
+                                        else "bumper"
+                                    )
+                                ),
+                            )
+                            ok_vis = True
+                        else:
+                            self._reset_vision_execution_tolerances(arm)
+                            return False
                     ok_vis = True
+                    self._last_exec_p_fin = None
             except MoveItCommanderException:
-                if not self._joint_pregrasp_grasp(arm, gripper):
+                if getattr(self, "_grasp_table_contact_abort_mission", False):
                     self._reset_vision_execution_tolerances(arm)
                     return False
+                if not self._joint_pregrasp_grasp(arm, gripper):
+                    ok_fc, fc_why, fc_met = self._force_close_grasp_allowed(
+                        arm, p_fin
+                    )
+                    if ok_fc:
+                        rospy.logwarn(
+                            "[GRASP] MoveIt 异常后关节备用失败但强制闭爪(%s=%s)→仍闭爪 | EN: force close",
+                            fc_why,
+                            (
+                                ("%.3f" % fc_met)
+                                if fc_why == "tcp_dist_m"
+                                else (
+                                    ("%.1fpx" % fc_met)
+                                    if fc_why == "pixel_err"
+                                    else "bumper"
+                                )
+                            ),
+                        )
+                        ok_vis = True
+                    else:
+                        self._reset_vision_execution_tolerances(arm)
+                        return False
                 ok_vis = True
+                self._last_exec_p_fin = None
             finally:
                 self._reset_vision_execution_tolerances(arm)
             # 末端 Pose 链成功，或关节备用到位，均允许进入夹爪闭合（抓取精度后者依赖关节示教）
@@ -2091,16 +3235,39 @@ class GraspMission(object):
                 return False
 
         if not motion_ok:
-            rospy.logerr(
-                "手臂未到达视觉目标位姿，跳过夹爪闭合（避免空夹误判）。"
-                "若为 TIMED_OUT：查 trajectory_execution 是否被 RViz 改回、或提高 vision_*_vel_scale；"
-                "若规划探针已打印 err：按 MoveIt 错误码区分不可达/碰撞/约束。"
-            )
+            if getattr(self, "_grasp_table_contact_abort_mission", False):
+                rospy.logwarn(
+                    "[GRASP] 台面碰撞已收臂→跳过闭爪 | EN: table hit skip close"
+                )
+            else:
+                rospy.logerr(
+                    "[GRASP] 手臂未到位，跳过闭爪 | EN: arm not settled, skip close"
+                )
             return False
 
-        gripper.set_joint_value_target([self.gripper_close])
-        if not gripper.go(wait=True):
-            rospy.logerr("夹爪闭合 MoveIt 失败（可能 TIMED_OUT）")
+        pinch = float(self.gripper_soft_pinch)
+        lo = float(self.gripper_close) + 0.03
+        hi = float(self.gripper_open_max) - 0.05
+        if pinch > lo and pinch < hi:
+            pinch = max(0.0, min(pinch, float(self.gripper_joint_upper)))
+            gripper.set_joint_value_target([pinch])
+            if not gripper.go(wait=True):
+                rospy.logwarn(
+                    "[GRIP] 轻合 pinch=%.3f 失败→仍尝试最终闭合 | EN: soft pinch failed",
+                    pinch,
+                )
+            else:
+                rospy.loginfo(
+                    "[GRIP] 轻合 pinch=%.3f →最终 tgt=%.3f | EN: soft pinch then close",
+                    pinch,
+                    float(self.gripper_close),
+                )
+            rospy.sleep(max(0.0, float(self.gripper_soft_pinch_pause_sec)))
+
+        if not self._close_gripper_after_approach(gripper):
+            rospy.logerr(
+                "[GRIP] MoveIt 闭爪失败 | EN: gripper close (MoveIt) failed"
+            )
             return False
         return True
 
@@ -2133,11 +3300,125 @@ class GraspMission(object):
                 pass
         return ok
 
+    def _tcp_pixel_error_vs_last_detection(self, arm):
+        """
+        将 hand_tcp（规划系）变到相机光学系，按 camera_info 投影为像素，与检测稳定时的 uv 比偏差（像素）。
+        用于「规划系 3D 目标有偏但画面仍对准」时的辅助判据；与相机到蓝块的深度（米）不是同一量纲，不宜直接相减比较。
+        """
+        if self._K is None or self._last_uv is None:
+            return None
+        cpo = self.get_tcp_xyz_in_ref_frame(arm)
+        if cpo is None:
+            return None
+        pt = Point(float(cpo[0]), float(cpo[1]), float(cpo[2]))
+        pc = transform_point(
+            self.tf_buffer,
+            pt,
+            self.camera_optical_frame,
+            self.ref_frame,
+        )
+        if pc is None:
+            return None
+        z = float(pc.z)
+        if z <= 0.0:
+            return None
+        z_floor = max(1e-6, float(self.grasp_tcp_proj_min_z_m))
+        z = max(z, z_floor)
+        fx, fy = float(self._K[0, 0]), float(self._K[1, 1])
+        cx, cy = float(self._K[0, 2]), float(self._K[1, 2])
+        u = fx * float(pc.x) / z + cx
+        v = fy * float(pc.y) / z + cy
+        du = u - float(self._last_uv[0])
+        dv = v - float(self._last_uv[1])
+        return float(math.hypot(du, dv))
+
+    def get_tcp_xyz_in_ref_frame(self, arm=None):
+        """
+        hand_tcp 原点在 self.ref_frame（与视觉目标同系）下的 xyz。
+        MoveIt Python 的 get_current_pose() 把位姿写在 get_planning_frame()
+        （常为 base_link），不能与 roarm_base_link 下的目标直接做差；此处优先 TF。
+        """
+        p_tf = transform_point(
+            self.tf_buffer,
+            Point(0.0, 0.0, 0.0),
+            self.ref_frame,
+            self.ee_tcp_frame,
+            timeout=1.5,
+        )
+        if p_tf is None:
+            rospy.sleep(0.05)
+            p_tf = transform_point(
+                self.tf_buffer,
+                Point(0.0, 0.0, 0.0),
+                self.ref_frame,
+                self.ee_tcp_frame,
+                timeout=0.8,
+            )
+        if p_tf is not None:
+            return np.array([p_tf.x, p_tf.y, p_tf.z], dtype=np.float64)
+        if arm is None or do_transform_point is None:
+            return None
+        try:
+            ps = arm.get_current_pose()
+            fr = ps.header.frame_id
+            pp = ps.pose.position
+            if not fr or fr == self.ref_frame:
+                return np.array([pp.x, pp.y, pp.z], dtype=np.float64)
+            pst = PointStamped()
+            pst.header.frame_id = fr
+            pst.header.stamp = rospy.Time(0)
+            pst.point = pp
+            tfm = self.tf_buffer.lookup_transform(
+                self.ref_frame, fr, rospy.Time(0), rospy.Duration(1.5)
+            )
+            outp = do_transform_point(pst, tfm)
+            return np.array(
+                [outp.point.x, outp.point.y, outp.point.z], dtype=np.float64
+            )
+        except Exception:
+            return None
+
+    def _tcp_distance_to_xyz(self, arm, xyz):
+        """ref_frame 下 TCP 与目标点欧氏距离（米）；不可用时返回 None。"""
+        if xyz is None:
+            return None
+        try:
+            seq = list(xyz)
+            if len(seq) < 3:
+                return None
+            tcp = self.get_tcp_xyz_in_ref_frame(arm)
+            if tcp is None:
+                return None
+            t = np.asarray(tcp, dtype=np.float64)
+            p = np.asarray([float(seq[0]), float(seq[1]), float(seq[2])], dtype=np.float64)
+            return float(np.linalg.norm(t - p))
+        except Exception:
+            return None
+
+    def _force_close_grasp_allowed(self, arm, p_fin):
+        """
+        末段执行失败时是否仍允许 MoveIt 闭爪：TCP 距下落点足够近，或画面像素对准足够好（逻辑或）。
+        返回 (ok, reason, metric)；reason 为 'tcp_dist_m'、'pixel_err' 或 'gazebo_contact'。
+        """
+        if bool(getattr(self, "_table_contact_seen", False)) and bool(
+            getattr(self, "table_contact_block_force_close", True)
+        ):
+            return False, "table_contact", None
+        if bool(getattr(self, "_grasp_contact_seen", False)):
+            return True, "gazebo_contact", 1.0
+        thr = float(self.force_close_gripper_if_tcp_within_m)
+        dfin = self._tcp_distance_to_xyz(arm, p_fin)
+        if thr > 1e-6 and dfin is not None and dfin <= thr:
+            return True, "tcp_dist_m", dfin
+        px_max = float(self.force_close_gripper_if_pixel_below_px)
+        if px_max > 1e-6:
+            px_err = self._tcp_pixel_error_vs_last_detection(arm)
+            if px_err is not None and px_err <= px_max:
+                return True, "pixel_err", px_err
+        return False, "", None
+
     def report_grasp_success(self, moveit_ok, vision_xyz_used):
-        """
-        启发式：须 MoveIt 全程成功 + 夹爪关到位 +（若用了视觉）末端接近目标点。
-        空中闭合夹爪也会关紧，故不能仅凭关节角判定「夹住物体」。
-        """
+        """MoveIt 成功 + 爪闭 +（视觉时）TF 下 TCP 与目标距离在阈值内（与视觉同 ref_frame）。"""
         rospy.sleep(0.4)
         jp = self._gripper_joint_pos
         jp_sane = (
@@ -2146,13 +3427,12 @@ class GraspMission(object):
         )
         if jp is not None and not jp_sane:
             rospy.logwarn(
-                "夹爪关节读数 %.4f 超出合理范围 [0,%.2f]，忽略闭合判定（检查 joint_states 与 joint 名）",
+                "[GRIP] 关节 %.4f 超界 [0,%.2f]，忽略闭合判据 | EN: joint out of range, ignore close check",
                 jp,
                 self.gripper_joint_upper,
             )
-        closed = jp_sane and jp >= self.grasp_joint_closed_threshold
+        closed = jp_sane and jp <= self.grasp_joint_closed_threshold
 
-        # MoveIt 失败时不应把「末端接近」判为 True（此前仅在 moveit_ok 时才算距离，导致日志矛盾）
         ee_near = True
         if not moveit_ok:
             ee_near = False
@@ -2164,35 +3444,72 @@ class GraspMission(object):
                     off = np.array(self.vision_target_offset, dtype=np.float64)
                     d0 = np.array(self.vision_pregrasp_delta, dtype=np.float64)
                     d1 = np.array(self.vision_grasp_delta, dtype=np.float64)
-                    tgt = np.array(vision_xyz_used, dtype=np.float64) + off + d0 + d1
-                    cp = arm.get_current_pose().pose.position
-                    dist = math.sqrt(
-                        (tgt[0] - cp.x) ** 2
-                        + (tgt[1] - cp.y) ** 2
-                        + (tgt[2] - cp.z) ** 2
+                    ez = float(self.vision_tcp_extra_z_m)
+                    tgt_legacy = np.array(vision_xyz_used, dtype=np.float64) + off + d0 + d1
+                    tgt_with_ez = tgt_legacy + np.array(
+                        [0.0, 0.0, ez], dtype=np.float64
                     )
-                    ee_near = dist < self.grasp_ee_to_target_max_m
-                    rospy.loginfo(
-                        "末端到视觉下落点距离 %.3f m（判接触阈值 < %.3f m）；"
-                        "末端位姿为 arm 组 tip_link=hand_tcp（与 MoveIt SRDF 一致）；"
-                        "若预检失败后仅走关节 pregrasp/grasp，末端未跟踪视觉下落点则距离大属预期",
-                        dist,
-                        self.grasp_ee_to_target_max_m,
-                    )
+                    cpo = self.get_tcp_xyz_in_ref_frame(arm)
+                    if cpo is None:
+                        ee_near = False
+                    else:
+                        use_fin = (
+                            self._last_exec_p_fin is not None
+                            and len(self._last_exec_p_fin) == 3
+                        )
+                        if use_fin:
+                            tgt = np.array(self._last_exec_p_fin, dtype=np.float64)
+                            tgt_tag = "fin"
+                        else:
+                            tgt = tgt_with_ez
+                            tgt_tag = "leg"
+                        dist = float(np.linalg.norm(tgt - cpo))
+                        max_m = float(self.grasp_ee_to_target_max_m)
+                        geom_near = dist < max_m
+                        px_err = self._tcp_pixel_error_vs_last_detection(arm)
+                        cam_fb_ok = bool(
+                            self.grasp_ee_near_cam_fallback_enable
+                            and px_err is not None
+                            and px_err < self.grasp_ee_near_cam_fallback_max_px
+                        )
+                        ee_near = geom_near or cam_fb_ok
+                        px_log = -1.0 if px_err is None else px_err
+                        rospy.loginfo(
+                            "[EE] tgt=%s dist=%.3f thr=%.3f m px=%.0f geom=%s cam_fb=%s | EN: TCP vs goal",
+                            tgt_tag,
+                            dist,
+                            max_m,
+                            px_log,
+                            geom_near,
+                            cam_fb_ok,
+                        )
                 except Exception as e:
-                    rospy.logwarn("末端距离判定失败: %s", e)
+                    rospy.logwarn(
+                        "[EE] 判距异常: %s | EN: EE check exception",
+                        e,
+                    )
                     ee_near = False
 
         ok = bool(moveit_ok and closed and ee_near)
-        rospy.logwarn(
-            "【抓取结果】蓝方块是否被夹住: %s | MoveIt完成=%s, 夹爪%s=%.4f(>=%.2f), 末端接近目标=%s",
-            "是（高概率）" if ok else "否或不确定",
-            moveit_ok,
-            self.gripper_joint_name,
-            jp if jp is not None else float("nan"),
-            self.grasp_joint_closed_threshold,
-            ee_near,
+        _jp = jp if jp is not None else float("nan")
+        _msg = (
+            "[RESULT] 抓取成功=%s MoveIt=%s 爪闭=%s 末端近=%s jp=%.3f | EN: grasp ok=%s moveit=%s closed=%s near=%s"
+            % (
+                ok,
+                moveit_ok,
+                closed,
+                ee_near,
+                _jp,
+                ok,
+                moveit_ok,
+                closed,
+                ee_near,
+            )
         )
+        if ok:
+            rospy.loginfo(_msg)
+        else:
+            rospy.logwarn(_msg)
         return ok
 
 
@@ -2202,7 +3519,10 @@ def main():
     rate = rospy.Rate(m.rate_hz)
 
     while not rospy.is_shutdown() and not m.state.connected:
-        rospy.loginfo_throttle(2.0, "等待 MAVROS …")
+        rospy.loginfo_throttle(
+            2.0,
+            "[MAVROS] 等待连接 | EN: waiting for MAVROS state",
+        )
         rate.sleep()
 
     yaw = m.yaw_from_pose(m.pose)
@@ -2217,21 +3537,24 @@ def main():
     m.yaw0 = m.yaw_from_pose(m.pose)
     c, s = math.cos(m.yaw0), math.sin(m.yaw0)
     m.z_high = m.z0 + m.hover_rel_m
-    m.z_low = m.z0 + m.low_rel_m
+    m.z_low = m.z0 + m.low_rel_m + m.low_rel_guard_m
     m.z_sp = m.z_high
     lat = float(m.approach_lateral_m)
-    m.x_fwd = m.x0 + m.forward_m * c + lat * s
-    m.y_fwd = m.y0 + m.forward_m * s - lat * c
+    fwd_total = float(m.forward_m) + float(m.approach_forward_extra_m)
+    m.x_fwd = m.x0 + fwd_total * c + lat * s
+    m.y_fwd = m.y0 + fwd_total * s - lat * c
 
     rospy.loginfo(
-        "起点 (%.2f,%.2f,%.2f)  z_high=%.2f z_low=%.2f  "
-        "前飞 %.2f m + 侧向(lat) %.2f m → 落点 (%.2f,%.2f)",
+        "[MISSION] 起点(%.2f,%.2f,%.2f) z_hi=%.2f z_lo=%.2f(rel=%.2f+guard=%.2f) fwd=%.2f+extra=%.2f lat=%.2f →(%.2f,%.2f) | EN: home & approach WP",
         m.x0,
         m.y0,
         m.z0,
         m.z_high,
         m.z_low,
+        m.low_rel_m,
+        m.low_rel_guard_m,
         m.forward_m,
+        m.approach_forward_extra_m,
         lat,
         m.x_fwd,
         m.y_fwd,
@@ -2241,12 +3564,12 @@ def main():
         try:
             m.set_mode(0, "OFFBOARD")
         except rospy.ServiceException as e:
-            rospy.logwarn("%s", e)
+            rospy.logwarn("[MAVROS] set_mode: %s | EN: service", e)
     if m.auto_arm:
         try:
             m.arming(True)
         except rospy.ServiceException as e:
-            rospy.logwarn("%s", e)
+            rospy.logwarn("[MAVROS] arm: %s | EN: service", e)
 
     if m.offboard_stream_enable:
         start_offboard_setpoint_stream(
@@ -2254,7 +3577,7 @@ def main():
         )
 
     m.phase = m.PH_HOVER_1M
-    m.t_phase0 = time.time()
+    m.t_phase0 = rospy.get_time()
     vision_xyz = None
 
     try:
@@ -2262,7 +3585,7 @@ def main():
             px = m.pose.pose.position.x
             py = m.pose.pose.position.y
             pz = m.pose.pose.position.z
-            yaw = m.yaw_from_pose(m.pose)
+            yaw = m.offboard_yaw_cmd()
 
             if m.phase == m.PH_HOVER_1M:
                 maybe_publish_offboard(m, m.x0, m.y0, m.z_high, yaw)
@@ -2272,7 +3595,9 @@ def main():
                     if m._hold_since is None:
                         m._hold_since = time.time()
                     elif time.time() - m._hold_since > m.hold_sec:
-                        rospy.loginfo("1m 悬停完成 → 机械臂准备姿态")
+                        rospy.loginfo(
+                            "[PHASE] 悬停完成→arm_ready | EN: hover done, arm ready"
+                        )
                         m._hold_since = None
                         m.phase = m.PH_ARM_READY
                 else:
@@ -2282,7 +3607,9 @@ def main():
 
             if m.phase == m.PH_ARM_READY:
                 maybe_publish_offboard(m, m.x0, m.y0, m.z_high, yaw)
-                rospy.loginfo("MoveIt: 机械臂 → arm_ready_joints …")
+                rospy.loginfo(
+                    "[PHASE] MoveIt→arm_ready | EN: commanding ready pose"
+                )
                 ok = m.exec_arm_joints(
                     m.arm_ready_joints,
                     vel_scale=m.arm_ready_vel_scaling,
@@ -2290,7 +3617,7 @@ def main():
                 )
                 if not ok:
                     rospy.logwarn(
-                        "准备姿态失败，使用保守关节 + 更慢速度 + 略松关节容差重试 …"
+                        "[PHASE] arm_ready 失败→慢速重试 | EN: retry slow"
                     )
                     ok = m.exec_arm_joints(
                         m.arm_ready_joints_fallback,
@@ -2299,60 +3626,85 @@ def main():
                         joint_tol=0.2,
                     )
                 if not ok:
-                    rospy.logerr("机械臂准备姿态仍失败（易影响后续抓取）")
+                    rospy.logerr(
+                        "[PHASE] arm_ready 仍失败 | EN: arm_ready failed"
+                    )
                 m.phase = m.PH_ARM_SETTLE
-                m.t_phase0 = time.time()
+                m.t_phase0 = rospy.get_time()
                 rate.sleep()
                 continue
 
             if m.phase == m.PH_ARM_SETTLE:
                 maybe_publish_offboard(m, m.x0, m.y0, m.z_high, yaw)
-                if time.time() - m.t_phase0 >= m.hold_sec:
-                    rospy.loginfo("准备姿态后悬停结束 → 前飞 %.2f m", m.forward_m)
+                if rospy.get_time() - m.t_phase0 >= m.hold_sec:
+                    rospy.loginfo(
+                        "[PHASE] settle→前飞 %.2f m (extra=%.2f) ramp=%.1fs | EN: forward %.2f m extra %.2f ramp %.1f s",
+                        m.forward_m + m.approach_forward_extra_m,
+                        m.approach_forward_extra_m,
+                        m.forward_ramp_sec,
+                        m.forward_m + m.approach_forward_extra_m,
+                        m.approach_forward_extra_m,
+                        m.forward_ramp_sec,
+                    )
+                    m._fwd_ramp_x0 = m.x0
+                    m._fwd_ramp_y0 = m.y0
+                    m._fwd_ramp_x1 = m.x_fwd
+                    m._fwd_ramp_y1 = m.y_fwd
                     m.phase = m.PH_FWD
-                    m.t_phase0 = time.time()
+                    m.t_phase0 = rospy.get_time()
                 rate.sleep()
                 continue
 
             if m.phase == m.PH_FWD:
-                maybe_publish_offboard(m, m.x_fwd, m.y_fwd, m.z_high, yaw)
+                fx, fy = m._forward_offboard_xy()
+                maybe_publish_offboard(m, fx, fy, m.z_high, yaw)
                 if m.dist3(px, py, pz, m.x_fwd, m.y_fwd, m.z_high) < m.wp_tol_xy * 1.2:
-                    rospy.loginfo("到达前飞点 → 悬停 %.1f s", m.hold_sec)
+                    rospy.loginfo(
+                        "[PHASE] 到达前飞点 hold %.1fs | EN: at forward WP",
+                        m.hold_sec,
+                    )
                     m.phase = m.PH_FWD_SETTLE
-                    m.t_phase0 = time.time()
+                    m.t_phase0 = rospy.get_time()
                 rate.sleep()
                 continue
 
             if m.phase == m.PH_FWD_SETTLE:
                 maybe_publish_offboard(m, m.x_fwd, m.y_fwd, m.z_high, yaw)
-                if time.time() - m.t_phase0 >= m.hold_sec:
+                if rospy.get_time() - m.t_phase0 >= m.hold_sec:
                     m.z_sp = m.z_high
                     m.phase = m.PH_DESCEND
-                    m.t_phase0 = time.time()
+                    m.t_phase0 = rospy.get_time()
                 rate.sleep()
                 continue
 
             if m.phase == m.PH_DESCEND:
                 maybe_publish_offboard(m, m.x_fwd, m.y_fwd, m.z_sp, yaw)
-                t = time.time() - m.t_phase0
-                alpha = min(1.0, t / max(0.5, m.descend_duration))
+                t = rospy.get_time() - m.t_phase0
+                alpha_lin = min(1.0, t / max(0.5, m.descend_duration))
+                # smoothstep：末端减速接近 z_low，减轻过冲触底再被控/碰撞弹起
+                alpha = alpha_lin * alpha_lin * (3.0 - 2.0 * alpha_lin)
                 m.z_sp = m.z_high + (m.z_low - m.z_high) * alpha
-                if alpha >= 1.0 and m.dist3(px, py, pz, m.x_fwd, m.y_fwd, m.z_low) < max(
+                if alpha_lin >= 1.0 and m.dist3(px, py, pz, m.x_fwd, m.y_fwd, m.z_low) < max(
                     m.wp_tol_xy, m.wp_tol_z
                 ):
-                    rospy.loginfo("已缓慢降至低高度 → 维持悬停 %.1f s", m.low_hold_sec)
+                    rospy.loginfo(
+                        "[PHASE] 到达低高度 hold %.1fs | EN: at low alt",
+                        m.low_hold_sec,
+                    )
                     m.z_sp = m.z_low
                     m.phase = m.PH_LOW_HOLD
-                    m.t_phase0 = time.time()
+                    m.t_phase0 = rospy.get_time()
                 rate.sleep()
                 continue
 
             if m.phase == m.PH_LOW_HOLD:
                 maybe_publish_offboard(m, m.x_fwd, m.y_fwd, m.z_sp, yaw)
-                if time.time() - m.t_phase0 >= m.low_hold_sec:
+                if rospy.get_time() - m.t_phase0 >= m.low_hold_sec:
                     m._stable_cnt = 0
                     m._last_uv = None
                     m._grasp_attempt = 0
+                    m._refine_xy_cumulative_m = 0.0
+                    m._refine_frame_tick = 0
                     m.phase = m.PH_DETECT
                 rate.sleep()
                 continue
@@ -2362,7 +3714,13 @@ def main():
                 uv = m.detect_blue_uv()
                 if uv is not None:
                     if m._stable_cnt < m.detection_stable:
-                        m.refine_xy_toward_blue(uv[0], uv[1])
+                        m._refine_frame_tick += 1
+                        if (
+                            m._refine_frame_tick
+                            % max(1, int(m.detect_refine_xy_stride))
+                            == 0
+                        ):
+                            m.refine_xy_toward_blue(uv[0], uv[1])
                     if m._last_uv and abs(uv[0] - m._last_uv[0]) < 10 and abs(
                         uv[1] - m._last_uv[1]
                     ) < 10:
@@ -2372,11 +3730,16 @@ def main():
                     m._last_uv = uv
                 else:
                     m._stable_cnt = 0
-                    rospy.loginfo_throttle(3.0, "检测中…未分割到足够大蓝块")
+                    rospy.loginfo_throttle(
+                        3.0,
+                        "[VISION] 检测中，无稳定蓝块 | EN: detecting, no blob",
+                    )
                 if m._stable_cnt >= m.detection_stable and m._last_uv is not None:
                     u, v = m._last_uv
                     vision_xyz = m.print_blue_pose(u, v)
-                    rospy.loginfo("检测稳定 → 开始抓取")
+                    rospy.loginfo(
+                        "[VISION] 检测稳定→抓取相位 | EN: stable, go grasp"
+                    )
                     m.phase = m.PH_GRASP
                 rate.sleep()
                 continue
@@ -2384,9 +3747,18 @@ def main():
             if m.phase == m.PH_GRASP:
                 maybe_publish_offboard(m, m.x_fwd, m.y_fwd, m.z_sp, yaw)
                 if m._last_uv is None:
+                    m._refine_xy_cumulative_m = 0.0
+                    m._refine_frame_tick = 0
                     m.phase = m.PH_DETECT
                     rate.sleep()
                     continue
+                u0, v0 = m._last_uv
+                fresh = m.print_blue_pose(u0, v0)
+                if fresh is not None:
+                    vision_xyz = fresh
+                    rospy.loginfo(
+                        "[VISION] 抓取前刷新观测 | EN: refresh blob pose"
+                    )
                 vx = vision_xyz
                 if vx is None:
                     u, v = m._last_uv
@@ -2398,8 +3770,34 @@ def main():
                         if pb is not None:
                             vx = (pb.x, pb.y, pb.z)
                 ok_mv = m.exec_arm_sequence(vx)
-                m.report_grasp_success(ok_mv, vx)
-                if ok_mv or m._grasp_attempt >= m.grasp_max_retries:
+                table_abort = bool(
+                    getattr(m, "_grasp_table_contact_abort_mission", False)
+                )
+                if table_abort:
+                    m._grasp_table_contact_abort_mission = False
+                    rospy.logwarn(
+                        "[GRASP] 台面硬碰已收臂→不再重试前飞抓取，进入收臂返航 | EN: table abort"
+                    )
+                if (
+                    not ok_mv
+                    and m.grasp_proceed_if_gripper_closed
+                    and not table_abort
+                ):
+                    jp = m._gripper_joint_pos
+                    th = float(m.grasp_joint_closed_threshold)
+                    if (
+                        jp is not None
+                        and 0.0 <= jp <= float(m.gripper_joint_upper)
+                        and jp <= th
+                    ):
+                        rospy.logwarn(
+                            "[GRASP] MoveIt 链路未全成功但爪已闭 jp=%.3f≤%.3f→仍收臂返航（防蓝块掉落后反复重抓）| EN: proceed closed",
+                            jp,
+                            th,
+                        )
+                        ok_mv = True
+                m.report_grasp_success(ok_mv and not table_abort, vx)
+                if ok_mv or table_abort or m._grasp_attempt >= m.grasp_max_retries:
                     m._grasp_attempt = 0
                     m.phase = m.PH_ARM_HOME
                 else:
@@ -2408,7 +3806,7 @@ def main():
                     m.x_fwd += m.grasp_retry_forward_m * cy
                     m.y_fwd += m.grasp_retry_forward_m * sy
                     rospy.logwarn(
-                        "抓取失败：沿机头前向微调 %.3f m 后重新检测（%d/%d）",
+                        "[GRASP] 失败重试 fwd=%.3f m (%d/%d) | EN: grasp retry",
                         m.grasp_retry_forward_m,
                         m._grasp_attempt,
                         m.grasp_max_retries,
@@ -2416,13 +3814,17 @@ def main():
                     vision_xyz = None
                     m._stable_cnt = 0
                     m._last_uv = None
+                    m._refine_xy_cumulative_m = 0.0
+                    m._refine_frame_tick = 0
                     m.phase = m.PH_DETECT
                 rate.sleep()
                 continue
 
             if m.phase == m.PH_ARM_HOME:
                 maybe_publish_offboard(m, m.x_fwd, m.y_fwd, m.z_sp, yaw)
-                rospy.loginfo("机械臂回到准备关节 …")
+                rospy.loginfo(
+                    "[PHASE] 臂→home/ready | EN: arm to home pose"
+                )
                 ok_h = m.exec_arm_joints(
                     m.arm_ready_joints,
                     vel_scale=m.arm_ready_vel_scaling,
@@ -2436,7 +3838,7 @@ def main():
                         joint_tol=0.2,
                     )
                 m.phase = m.PH_CLIMB
-                m.t_phase0 = time.time()
+                m.t_phase0 = rospy.get_time()
                 rate.sleep()
                 continue
 
@@ -2450,7 +3852,7 @@ def main():
                     elif time.time() - m._hold_since > m.hold_sec:
                         m._hold_since = None
                         m.phase = m.PH_CLIMB_SETTLE
-                        m.t_phase0 = time.time()
+                        m.t_phase0 = rospy.get_time()
                 else:
                     m._hold_since = None
                 rate.sleep()
@@ -2458,8 +3860,10 @@ def main():
 
             if m.phase == m.PH_CLIMB_SETTLE:
                 maybe_publish_offboard(m, m.x_fwd, m.y_fwd, m.z_high, yaw)
-                if time.time() - m.t_phase0 >= m.hold_sec:
-                    rospy.loginfo("1m 悬停结束 → 返航")
+                if rospy.get_time() - m.t_phase0 >= m.hold_sec:
+                    rospy.loginfo(
+                        "[PHASE] 爬升后→返航 | EN: climb done, RTL"
+                    )
                     m.phase = m.PH_RTL
                 rate.sleep()
                 continue
@@ -2467,7 +3871,9 @@ def main():
             if m.phase == m.PH_RTL:
                 maybe_publish_offboard(m, m.x0, m.y0, m.z_high, m.yaw0)
                 if m.dist3(px, py, pz, m.x0, m.y0, m.z_high) < m.wp_tol_xy * 1.5:
-                    rospy.loginfo("到达起点上方 → 降落")
+                    rospy.loginfo(
+                        "[PHASE] 到起点上方→降落 | EN: at home, land"
+                    )
                     m.phase = m.PH_LAND
                 rate.sleep()
                 continue
@@ -2476,14 +3882,16 @@ def main():
                 try:
                     m.set_mode(0, "AUTO.LAND")
                 except rospy.ServiceException as e:
-                    rospy.logwarn("%s", e)
+                    rospy.logwarn("[MAVROS] AUTO.LAND: %s | EN: service", e)
                 m.phase = m.PH_DONE
                 rate.sleep()
                 continue
 
             rate.sleep()
 
-        rospy.loginfo("offboard_grasp 流程结束")
+        rospy.loginfo(
+            "[MISSION] offboard_grasp 正常结束 | EN: mission complete"
+        )
     finally:
         if m._moveit_cpp_inited:
             moveit_commander.roscpp_shutdown()
@@ -2494,3 +3902,4 @@ if __name__ == "__main__":
         main()
     except rospy.ROSInterruptException:
         pass
+ 

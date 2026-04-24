@@ -131,7 +131,12 @@ endif()
 if(NOT CMAKE_INSTALL_LOCAL_ONLY)
   # Include the install script for each subdirectory.
   include("/home/demo/test_ws/build/gtest/cmake_install.cmake")
+  include("/home/demo/test_ws/build/myam_simulation/cmake_install.cmake")
   include("/home/demo/test_ws/build/myam_sys_moveit/cmake_install.cmake")
+  include("/home/demo/test_ws/build/apriltag_ros/cmake_install.cmake")
+  include("/home/demo/test_ws/build/real_roarm_d435_grasp/cmake_install.cmake")
+  include("/home/demo/test_ws/build/roarm_description/cmake_install.cmake")
+  include("/home/demo/test_ws/build/myam_description/cmake_install.cmake")
 
 endif()
 

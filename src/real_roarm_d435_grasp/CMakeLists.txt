@@ -1,0 +1,6 @@
+cmake_minimum_required(VERSION 3.0.2)
+project(real_roarm_d435_grasp)
+find_package(catkin REQUIRED COMPONENTS rospy std_msgs std_srvs sensor_msgs geometry_msgs cv_bridge tf2_ros tf2_geometry_msgs moveit_commander moveit_msgs)
+catkin_package()
+catkin_install_python(PROGRAMS scripts/d435_blob_grasp_node.py DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION})
+install(DIRECTORY launch DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION})

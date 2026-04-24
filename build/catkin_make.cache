@@ -1,2 +1,2 @@
-apriltag_ros:myam_description:myam_simulation:myam_sys_moveit:roarm_description
--DCATKIN_DEVEL_PREFIX=/home/demo/test_ws/devel -DCMAKE_INSTALL_PREFIX=/home/demo/test_ws/install -G Unix Makefiles
+apriltag_ros:myam_description:myam_simulation:myam_sys_moveit:real_roarm_d435_grasp:roarm_description
+-DCATKIN_WHITELIST_PACKAGES= -DCATKIN_DEVEL_PREFIX=/home/demo/test_ws/devel -DCMAKE_INSTALL_PREFIX=/home/demo/test_ws/install -G Unix Makefiles

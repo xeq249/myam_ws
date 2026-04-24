@@ -80,3 +80,7 @@ if("x${CMAKE_INSTALL_COMPONENT}x" STREQUAL "xUnspecifiedx" OR NOT CMAKE_INSTALL_
   file(INSTALL DESTINATION "${CMAKE_INSTALL_PREFIX}/lib/myam_simulation" TYPE PROGRAM FILES "/home/demo/test_ws/build/myam_simulation/catkin_generated/installspace/gazebo_truth_body_tf.py")
 endif()
 
+if("x${CMAKE_INSTALL_COMPONENT}x" STREQUAL "xUnspecifiedx" OR NOT CMAKE_INSTALL_COMPONENT)
+  file(INSTALL DESTINATION "${CMAKE_INSTALL_PREFIX}/lib/myam_simulation" TYPE PROGRAM FILES "/home/demo/test_ws/build/myam_simulation/catkin_generated/installspace/gazebo_fake_blue_attach.py")
+endif()
+

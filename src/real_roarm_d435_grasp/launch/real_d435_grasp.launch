@@ -1,0 +1,68 @@
+<?xml version="1.0"?>
+<launch>
+  <!--
+    真机台架：Intel RealSense D435 + Roarm-m3（MoveIt 组 arm / gripper）。
+    使用前请保证：
+    1) realsense2_camera 已发布 color、camera_info，以及与彩色对齐的深度
+       （默认可用 aligned_depth_to_color；若只有 depth 则设 depth_rel:=depth）；
+    2) move_group 已运行（如 myam_sys_moveit）；
+    3) TF：camera_optical_frame 相对 roarm_base_link 正确。
+
+    与 myam 仿真话题一致时示例::
+      camera_ns:=camera_realsense depth_rel:=depth
+      （若仿真无 aligned 图，节点仍会用 _uv_in_depth 把彩色质心映射到深度分辨率）
+
+    触发一次抓取::
+      rosservice call /real_d435_grasp/run_grasp "{}"
+    仅查看质心在规划系下坐标::
+      rosservice call /real_d435_grasp/peek_pose "{}"
+  -->
+
+  <arg name="camera_ns" default="camera"/>
+  <arg name="depth_rel" default="aligned_depth_to_color"
+       doc="depth 话题路径片段：/$(arg camera_ns)/$(arg depth_rel)/image_raw"/>
+  <arg name="planning_frame" default="roarm_base_link"/>
+  <arg name="optical_frame" default="camera_color_optical_frame"/>
+
+  <node pkg="real_roarm_d435_grasp" type="d435_blob_grasp_node.py" name="real_d435_grasp" output="screen">
+    <param name="color_topic" value="/$(arg camera_ns)/color/image_raw"/>
+    <param name="depth_topic" value="/$(arg camera_ns)/$(arg depth_rel)/image_raw"/>
+    <param name="camera_info_topic" value="/$(arg camera_ns)/color/camera_info"/>
+    <param name="camera_optical_frame" value="$(arg optical_frame)"/>
+    <param name="planning_frame" value="$(arg planning_frame)"/>
+
+    <param name="move_group_wait_sec" value="120.0"/>
+
+    <param name="use_named_pregrasp" value="true"/>
+    <param name="pregrasp_named_target" value="pregrasp"/>
+    <param name="return_home" value="true"/>
+    <param name="home_named_target" value="home"/>
+
+    <param name="arm_vel_scaling" value="0.2"/>
+    <param name="arm_accel_scaling" value="0.2"/>
+    <param name="planning_time_sec" value="28.0"/>
+
+    <param name="cartesian_final_approach" value="true"/>
+    <param name="cartesian_eef_step" value="0.01"/>
+    <param name="cartesian_min_fraction" value="0.72"/>
+    <param name="cartesian_avoid_collision" value="true"/>
+
+    <rosparam param="vision_pregrasp_delta">[0.0, 0.0, 0.07]</rosparam>
+    <rosparam param="vision_grasp_delta">[0.0, 0.0, -0.038]</rosparam>
+    <param name="vision_tcp_extra_z_m" value="0.0"/>
+
+    <rosparam param="hsv_lower">[72, 40, 40]</rosparam>
+    <rosparam param="hsv_upper">[130, 255, 255]</rosparam>
+    <param name="min_blob_area" value="120"/>
+
+    <param name="blob_z_min" value="-0.2"/>
+    <param name="blob_z_max" value="0.65"/>
+    <param name="assume_depth_m" value="0.5"/>
+
+    <param name="gripper_open" value="1.5"/>
+    <param name="gripper_close" value="0.0"/>
+
+    <param name="detection_stable_frames" value="5"/>
+    <param name="detection_collect_timeout" value="3.0"/>
+  </node>
+</launch>
