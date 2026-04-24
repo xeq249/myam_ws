@@ -9,10 +9,10 @@
   -->
   <arg name="hover_rel_m" default="1.0" doc="相对起飞 local z 的巡航高度（米）"/>
   <!-- 低空保持：rel + guard 为相对起飞点的总高度，减轻贴台触底后大幅弹起 -->
-  <arg name="low_rel_m" default="0.44" doc="抓取识别阶段相对起飞点基准高度（米）"/>
+  <arg name="low_rel_m" default="0.40" doc="抓取识别阶段相对起飞点基准高度（米）"/>
   <arg name="low_rel_guard_m" default="0.02" doc="在 low_rel_m 上再加的余量（米），仍触底可 0.08～0.10"/>
   <!-- 台面在世界 +X：forward_m 为基准前飞；extra 再沿机头前移（够不着台块时略增） -->
-  <arg name="forward_m" default="1.54" doc="机头方向前飞基准距离（米）；仍过头再减 0.03～0.08"/>
+  <arg name="forward_m" default="1.58" doc="机头方向前飞基准距离（米）；仍过头再减 0.03～0.08"/>
   <arg name="approach_forward_extra_m" default="0.08" doc="机头方向额外前飞（米），与 forward_m 叠加；太近则减或置 0"/>
   <!-- 前飞水平目标斜坡（秒）：0=瞬时跳变；4～8 可减轻阶跃引起的抬头爬升 -->
   <arg name="forward_ramp_sec" default="5.0"/>
@@ -24,7 +24,7 @@
     台面/蓝块在相机画面左侧（机体整体偏右）→ 应减小 lat 或改为负值（例如 -0.15～-0.45，小步试）。
     目标在画面右侧则相反（略增 lat）。勿与「蓝块在画面左/右」和「增 lat」记反。
   -->
-  <arg name="approach_lateral_m" default="0.15"/>
+  <arg name="approach_lateral_m" default="0.20"/>
   <!-- 规划系 roarm_base_link 下加到视觉质心的平移修正（米），按仿真手眼标定改 -->
   <arg name="vision_target_offset_x" default="0.0"/>
   <arg name="vision_target_offset_y" default="0.0"/>

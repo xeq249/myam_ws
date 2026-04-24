@@ -31,7 +31,7 @@ def main():
     cube_tf_frame = rospy.get_param("~cube_tf_frame", "grasp_blue_cube")
     collision_id = rospy.get_param("~collision_object_id", "grasp_blue_cube")
     pos = rospy.get_param("~position", [1.46, 0.98, 0.02])
-    size = rospy.get_param("~size", [0.04, 0.04, 0.04])
+    size = rospy.get_param("~size", [0.025, 0.025, 0.025])
     startup_sleep = rospy.get_param("~startup_sleep", 3.0)
 
     objects_param = rospy.get_param("~objects", None)

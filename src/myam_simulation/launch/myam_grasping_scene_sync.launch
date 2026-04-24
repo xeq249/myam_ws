@@ -12,7 +12,7 @@
 <launch>
   <arg name="scene_frame" default="map"/>
   <arg name="startup_sleep" default="3.0"/>
-  <!-- 与 myam_grasping.world 中 <pose> 与 <size> 一致：台子中心 z=0.10 高 0.20 → 顶面 0.20；蓝块中心 0.222 -->
+  <!-- 与 myam_grasping.world 中台/块一致：2.5cm 蓝块；顶面 z=0.20 → 块质心 z=0.2125 -->
   <node pkg="myam_simulation" type="grasp_blue_cube_rviz_sync.py" name="myam_grasping_scene_sync" output="screen">
     <param name="scene_frame" value="$(arg scene_frame)"/>
     <param name="startup_sleep" value="$(arg startup_sleep)"/>
@@ -23,8 +23,8 @@
   size: [0.40, 0.40, 0.20]
 - id: grasp_target_cube
   tf_frame: grasp_target_cube_center
-  position: [2.98, 1.18, 0.222]
-  size: [0.04, 0.04, 0.04]
+  position: [2.98, 1.18, 0.2125]
+  size: [0.025, 0.025, 0.025]
     </rosparam>
   </node>
 </launch>

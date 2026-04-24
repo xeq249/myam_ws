@@ -10,7 +10,7 @@
   <arg name="cube_x" default="1.46"/>
   <arg name="cube_y" default="0.98"/>
   <arg name="cube_z" default="0.02"/>
-  <arg name="cube_size" default="0.04"/>
+  <arg name="cube_size" default="0.025"/>
 
   <node pkg="myam_simulation" type="grasp_blue_cube_rviz_sync.py" name="grasp_blue_cube_rviz_sync"
         output="screen">

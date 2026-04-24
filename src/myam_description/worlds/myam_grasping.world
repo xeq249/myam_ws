@@ -84,25 +84,25 @@
       </link>
     </model>
 
-    <!-- 可抓取目标：略大于 XTDrone 可乐罐块，便于夹爪；中心在台面几何中心正上方 -->
+    <!-- 可抓取目标：2.5cm 边长立方体；质心 z = 台面 0.20 + 半高 0.0125 = 0.2125 -->
     <model name="grasp_target_cube">
-      <pose>1.93 0.98 0.222 0 0 0</pose>
+      <pose>1.93 0.98 0.2125 0 0 0</pose>
       <link name="cube_link">
         <inertial>
           <mass>0.05</mass>
           <inertia>
-            <ixx>8.33e-06</ixx>
+            <ixx>5.21e-06</ixx>
             <ixy>0</ixy>
             <ixz>0</ixz>
-            <iyy>8.33e-06</iyy>
+            <iyy>5.21e-06</iyy>
             <iyz>0</iyz>
-            <izz>8.33e-06</izz>
+            <izz>5.21e-06</izz>
           </inertia>
         </inertial>
         <collision name="collision">
           <geometry>
             <box>
-              <size>0.04 0.04 0.04</size>
+              <size>0.025 0.025 0.025</size>
             </box>
           </geometry>
           <surface>
@@ -126,7 +126,7 @@
         <visual name="visual">
           <geometry>
             <box>
-              <size>0.04 0.04 0.04</size>
+              <size>0.025 0.025 0.025</size>
             </box>
           </geometry>
           <material>
