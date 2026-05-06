@@ -1,0 +1,739 @@
+<sdf version='1.7'>
+  <model name='myam_sys_d435'>
+    <link name='base_link'>
+      <inertial>
+        <pose>-0.018664 0.000863 -0.096139 0 -0 0</pose>
+        <mass>2.02083</mass>
+        <inertia>
+          <ixx>0.0195506</ixx>
+          <ixy>-1.27548e-05</ixy>
+          <ixz>0.00102482</ixz>
+          <iyy>0.0221201</iyy>
+          <iyz>-0.00011034</iyz>
+          <izz>0.015863</izz>
+        </inertia>
+      </inertial>
+      <collision name='base_link_collision'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://myam_sys/meshes/base_link.STL</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <collision name='base_link_fixed_joint_lump__battery_link_collision_2'>
+        <pose>-0.061817 -2.3e-05 -0.068921 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://myam_sys/meshes/battery_link.STL</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <collision name='base_link_fixed_joint_lump__gps_link_collision_4'>
+        <pose>-0.000407 1.3e-05 0.17697 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://myam_sys/meshes/gps_link.STL</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <collision name='base_link_fixed_joint_lump__imu_link_collision_5'>
+        <pose>-0.095599 4.1e-05 -0.013807 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://myam_sys/meshes/imu_link.STL</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <collision name='base_link_fixed_joint_lump__landing_gear_1_link_collision_6'>
+        <pose>-1.3e-05 0.21064 -0.40283 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://myam_sys/meshes/landing_gear_1_link.STL</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <collision name='base_link_fixed_joint_lump__landing_gear_2_link_collision_7'>
+        <pose>-1.3e-05 -0.21064 -0.40283 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://myam_sys/meshes/landing_gear_2_link.STL</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <collision name='landing_gear_1_support_collision'>
+        <pose>0 0.21064 -0.401 0 -0 0</pose>
+        <geometry>
+          <box>
+            <size>0.24 0.03 0.02</size>
+          </box>
+        </geometry>
+        <surface>
+          <contact>
+            <ode>
+              <kp>1000000.0</kp>
+              <kd>10.0</kd>
+              <min_depth>0.001</min_depth>
+              <max_vel>0.1</max_vel>
+            </ode>
+          </contact>
+          <friction>
+            <ode>
+              <mu>1.0</mu>
+              <mu2>1.0</mu2>
+            </ode>
+          </friction>
+        </surface>
+      </collision>
+      <collision name='landing_gear_2_support_collision'>
+        <pose>0 -0.21064 -0.401 0 -0 0</pose>
+        <geometry>
+          <box>
+            <size>0.24 0.03 0.02</size>
+          </box>
+        </geometry>
+        <surface>
+          <contact>
+            <ode>
+              <kp>1000000.0</kp>
+              <kd>10.0</kd>
+              <min_depth>0.001</min_depth>
+              <max_vel>0.1</max_vel>
+            </ode>
+          </contact>
+          <friction>
+            <ode>
+              <mu>1.0</mu>
+              <mu2>1.0</mu2>
+            </ode>
+          </friction>
+        </surface>
+      </collision>
+      <visual name='base_link_visual'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://myam_sys/meshes/base_link.STL</uri>
+          </mesh>
+        </geometry>
+      </visual>
+      <visual name='base_link_fixed_joint_lump__battery_link_visual_2'>
+        <pose>-0.061817 -2.3e-05 -0.068921 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://myam_sys/meshes/battery_link.STL</uri>
+          </mesh>
+        </geometry>
+      </visual>
+      <visual name='base_link_fixed_joint_lump__gps_link_visual_4'>
+        <pose>-0.000407 1.3e-05 0.17697 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://myam_sys/meshes/gps_link.STL</uri>
+          </mesh>
+        </geometry>
+      </visual>
+      <visual name='base_link_fixed_joint_lump__imu_link_visual_5'>
+        <pose>-0.095599 4.1e-05 -0.013807 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://myam_sys/meshes/imu_link.STL</uri>
+          </mesh>
+        </geometry>
+      </visual>
+      <visual name='base_link_fixed_joint_lump__landing_gear_1_link_visual_6'>
+        <pose>-1.3e-05 0.21064 -0.40283 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://myam_sys/meshes/landing_gear_1_link.STL</uri>
+          </mesh>
+        </geometry>
+      </visual>
+      <visual name='base_link_fixed_joint_lump__landing_gear_2_link_visual_7'>
+        <pose>-1.3e-05 -0.21064 -0.40283 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://myam_sys/meshes/landing_gear_2_link.STL</uri>
+          </mesh>
+        </geometry>
+      </visual>
+      <!-- Fixed arm home pose on base_link（与 arm_home_on_start 默认 [0,-1.57,-1,0.57,0] 正向运动学一致）。
+           Arm inertia is merged into base_link，机械臂不作为独立动力学连杆。 -->
+      <visual name='base_link_fixed_arm_base_visual_8'>
+        <pose>0.073168 -0.0021131 -0.16312 0 -0 0.00022095</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://myam_sys/meshes/arm_base_link.STL</uri>
+          </mesh>
+        </geometry>
+      </visual>
+      <visual name='base_link_fixed_arm_link1_visual_9'>
+        <pose>0.073091303 -0.005618117 -0.22922 0 -0 0.00022095</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://myam_sys/meshes/arm_link1.STL</uri>
+          </mesh>
+        </geometry>
+      </visual>
+      <visual name='base_link_fixed_arm_link2_visual_10'>
+        <pose>0.073082927 0.032291882 -0.267179 0 1.5708 0.00000002</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://myam_sys/meshes/arm_link2.STL</uri>
+          </mesh>
+        </geometry>
+      </visual>
+      <visual name='base_link_fixed_arm_link3_visual_11'>
+        <pose>-0.163713105 -0.024228123 -0.297369577 0 0.57 0.00000002</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://myam_sys/meshes/arm_link3.STL</uri>
+          </mesh>
+        </geometry>
+      </visual>
+      <visual name='base_link_fixed_arm_link4_visual_12'>
+        <pose>-0.042066834 0.013971880 -0.375341011 -0.008726278 -7.615e-05 -0.008725994</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://myam_sys/meshes/arm_link4.STL</uri>
+          </mesh>
+        </geometry>
+      </visual>
+      <visual name='base_link_fixed_arm_link5_visual_13'>
+        <pose>0.012190916 -0.004738477 -0.361528209 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://myam_sys/meshes/arm_link5.STL</uri>
+          </mesh>
+        </geometry>
+      </visual>
+      <visual name='base_link_fixed_gripper_visual_14'>
+        <pose>0.065441916 -0.004738478 -0.342588209 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://myam_sys/meshes/gripper_link.STL</uri>
+          </mesh>
+        </geometry>
+      </visual>
+    </link>
+    <joint name='rotor_1_link_joint' type='revolute'>
+      <pose relative_to='base_link'>0.34877 0.20136 0.041041 0 -0 0</pose>
+      <parent>base_link</parent>
+      <child>rotor_1_link</child>
+      <axis>
+        <xyz>-0.048924 -0.028246 0.9984</xyz>
+        <limit>
+          <lower>-1e+16</lower>
+          <upper>1e+16</upper>
+        </limit>
+        <dynamics>
+          <spring_reference>0</spring_reference>
+          <spring_stiffness>0</spring_stiffness>
+        </dynamics>
+      </axis>
+    </joint>
+    <link name='rotor_1_link'>
+      <pose relative_to='rotor_1_link_joint'>0 0 0 0 -0 0</pose>
+      <inertial>
+        <pose>0.000865 0.000496 -0.017044 0 -0 0</pose>
+        <mass>0.021154</mass>
+        <inertia>
+          <ixx>9.7523e-06</ixx>
+          <ixy>4.5374e-06</ixy>
+          <ixz>-1.105e-07</ixz>
+          <iyy>5.1094e-06</iyy>
+          <iyz>-4.104e-08</iyz>
+          <izz>1.4591e-05</izz>
+        </inertia>
+      </inertial>
+      <collision name='rotor_1_link_collision'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://myam_sys/meshes/rotor_1_link.STL</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <visual name='rotor_1_link_visual'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://myam_sys/meshes/rotor_1_link.STL</uri>
+          </mesh>
+        </geometry>
+      </visual>
+    </link>
+    <joint name='rotor_2_link_joint' type='revolute'>
+      <pose relative_to='base_link'>0.3488 -0.20138 0.040896 0 -0 0</pose>
+      <parent>base_link</parent>
+      <child>rotor_2_link</child>
+      <axis>
+        <xyz>-0.048454 0.027975 0.99843</xyz>
+        <limit>
+          <lower>-1e+16</lower>
+          <upper>1e+16</upper>
+        </limit>
+        <dynamics>
+          <spring_reference>0</spring_reference>
+          <spring_stiffness>0</spring_stiffness>
+        </dynamics>
+      </axis>
+    </joint>
+    <link name='rotor_2_link'>
+      <pose relative_to='rotor_2_link_joint'>0 0 0 0 -0 0</pose>
+      <inertial>
+        <pose>0.000921 -0.000539 -0.016732 0 -0 0</pose>
+        <mass>0.021907</mass>
+        <inertia>
+          <ixx>1.2151e-05</ixx>
+          <ixy>-6.0793e-06</ixy>
+          <ixz>-1.111e-07</ixz>
+          <iyy>6.1483e-06</iyy>
+          <iyz>3.528e-08</iyz>
+          <izz>1.8022e-05</izz>
+        </inertia>
+      </inertial>
+      <collision name='rotor_2_link_collision'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://myam_sys/meshes/rotor_2_link.STL</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <visual name='rotor_2_link_visual'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://myam_sys/meshes/rotor_2_link.STL</uri>
+          </mesh>
+        </geometry>
+      </visual>
+    </link>
+    <joint name='rotor_3_link_joint' type='revolute'>
+      <pose relative_to='base_link'>0 -0.40268 0.041175 0 -0 0</pose>
+      <parent>base_link</parent>
+      <child>rotor_3_link</child>
+      <axis>
+        <xyz>0 0.056997 0.99837</xyz>
+        <limit>
+          <lower>-1e+16</lower>
+          <upper>1e+16</upper>
+        </limit>
+        <dynamics>
+          <spring_reference>0</spring_reference>
+          <spring_stiffness>0</spring_stiffness>
+        </dynamics>
+      </axis>
+    </joint>
+    <link name='rotor_3_link'>
+      <pose relative_to='rotor_3_link_joint'>0 0 0 0 -0 0</pose>
+      <inertial>
+        <pose>0.000132 -0.000922 -0.0171 0 -0 0</pose>
+        <mass>0.021043</mass>
+        <inertia>
+          <ixx>2.343e-06</ixx>
+          <ixy>-3.5166e-07</ixy>
+          <ixz>2.5278e-08</ixz>
+          <iyy>1.1905e-05</iyy>
+          <iyz>1.2057e-07</iyz>
+          <izz>1.3977e-05</izz>
+        </inertia>
+      </inertial>
+      <collision name='rotor_3_link_collision'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://myam_sys/meshes/rotor_3_link.STL</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <visual name='rotor_3_link_visual'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://myam_sys/meshes/rotor_3_link.STL</uri>
+          </mesh>
+        </geometry>
+      </visual>
+    </link>
+    <joint name='rotor_4_link_joint' type='revolute'>
+      <pose relative_to='base_link'>-0.34883 -0.2014 0.040769 0 -0 0</pose>
+      <parent>base_link</parent>
+      <child>rotor_4_link</child>
+      <axis>
+        <xyz>0.048041 0.027736 0.99846</xyz>
+        <limit>
+          <lower>-1e+16</lower>
+          <upper>1e+16</upper>
+        </limit>
+        <dynamics>
+          <spring_reference>0</spring_reference>
+          <spring_stiffness>0</spring_stiffness>
+        </dynamics>
+      </axis>
+    </joint>
+    <link name='rotor_4_link'>
+      <pose relative_to='rotor_4_link_joint'>0 0 0 0 -0 0</pose>
+      <inertial>
+        <pose>-0.000958 -0.000546 -0.016731 0 -0 0</pose>
+        <mass>0.021907</mass>
+        <inertia>
+          <ixx>1.2729e-05</ixx>
+          <ixy>5.7553e-06</ixy>
+          <ixz>8.9654e-08</ixz>
+          <iyy>5.57e-06</iyy>
+          <iyz>6.6405e-08</iyz>
+          <izz>1.8023e-05</izz>
+        </inertia>
+      </inertial>
+      <collision name='rotor_4_link_collision'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://myam_sys/meshes/rotor_4_link.STL</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <visual name='rotor_4_link_visual'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://myam_sys/meshes/rotor_4_link.STL</uri>
+          </mesh>
+        </geometry>
+      </visual>
+    </link>
+    <joint name='rotor_5_link_joint' type='revolute'>
+      <pose relative_to='base_link'>-0.34873 0.20134 0.041175 0 -0 0</pose>
+      <parent>base_link</parent>
+      <child>rotor_5_link</child>
+      <axis>
+        <xyz>0.049361 -0.028499 0.99837</xyz>
+        <limit>
+          <lower>-1e+16</lower>
+          <upper>1e+16</upper>
+        </limit>
+        <dynamics>
+          <spring_reference>0</spring_reference>
+          <spring_stiffness>0</spring_stiffness>
+        </dynamics>
+      </axis>
+    </joint>
+    <link name='rotor_5_link'>
+      <pose relative_to='rotor_5_link_joint'>0 0 0 0 -0 0</pose>
+      <inertial>
+        <pose>-0.000787 0.000471 -0.017046 0 -0 0</pose>
+        <mass>0.021159</mass>
+        <inertia>
+          <ixx>1.0284e-05</ixx>
+          <ixy>-4.2421e-06</ixy>
+          <ixz>9.245e-08</ixz>
+          <iyy>4.5973e-06</iyy>
+          <iyz>-8.1212e-08</iyz>
+          <izz>1.4609e-05</izz>
+        </inertia>
+      </inertial>
+      <collision name='rotor_5_link_collision'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://myam_sys/meshes/rotor_5_link.STL</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <visual name='rotor_5_link_visual'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://myam_sys/meshes/rotor_5_link.STL</uri>
+          </mesh>
+        </geometry>
+      </visual>
+    </link>
+    <joint name='rotor_6_link_joint' type='revolute'>
+      <pose relative_to='base_link'>0 0.4028 0.040769 0 -0 0</pose>
+      <parent>base_link</parent>
+      <child>rotor_6_link</child>
+      <axis>
+        <xyz>0 -0.055473 0.99846</xyz>
+        <limit>
+          <lower>-1e+16</lower>
+          <upper>1e+16</upper>
+        </limit>
+        <dynamics>
+          <spring_reference>0</spring_reference>
+          <spring_stiffness>0</spring_stiffness>
+        </dynamics>
+      </axis>
+    </joint>
+    <link name='rotor_6_link'>
+      <pose relative_to='rotor_6_link_joint'>0 0 0 0 -0 0</pose>
+      <inertial>
+        <pose>4e-06 0.001103 -0.01673 0 -0 0</pose>
+        <mass>0.021907</mass>
+        <inertia>
+          <ixx>2.3754e-06</ixx>
+          <ixy>2.222e-07</ixy>
+          <ixz>1.2652e-08</ixz>
+          <iyy>1.5929e-05</iyy>
+          <iyz>-1.1083e-07</iyz>
+          <izz>1.8028e-05</izz>
+        </inertia>
+      </inertial>
+      <collision name='rotor_6_link_collision'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://myam_sys/meshes/rotor_6_link.STL</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <visual name='rotor_6_link_visual'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://myam_sys/meshes/rotor_6_link.STL</uri>
+          </mesh>
+        </geometry>
+      </visual>
+    </link>
+    <!-- Fixed arm version for 4101 takeoff verification: full mass/geometry kept, arm locked in home pose. -->
+    <plugin name='multirotor_base' filename='libgazebo_multirotor_base_plugin.so'>
+      <robotNamespace/>
+      <linkName>base_link</linkName>
+      <rotorVelocitySlowdownSim>10</rotorVelocitySlowdownSim>
+    </plugin>
+    <!-- Motor order: match URDF (x forward, y left). rotor_1=前左, rotor_2=前右, rotor_3=右, rotor_4=后右, rotor_5=后左, rotor_6=左. PX4 0..5 = rotor_1..6 -->
+    <plugin name='motor_0' filename='libgazebo_motor_model.so'>
+      <robotNamespace/>
+      <jointName>rotor_1_link_joint</jointName>
+      <linkName>rotor_1_link</linkName>
+      <turningDirection>ccw</turningDirection>
+      <timeConstantUp>0.0125</timeConstantUp>
+      <timeConstantDown>0.025</timeConstantDown>
+      <maxRotVelocity>1500</maxRotVelocity>
+      <motorConstant>8.54858e-06</motorConstant>
+      <momentConstant>0.06</momentConstant>
+      <commandSubTopic>/gazebo/command/motor_speed</commandSubTopic>
+      <motorNumber>0</motorNumber>
+      <rotorDragCoefficient>0.000806428</rotorDragCoefficient>
+      <rollingMomentCoefficient>1e-06</rollingMomentCoefficient>
+      <motorSpeedPubTopic>/motor_speed/0</motorSpeedPubTopic>
+      <rotorVelocitySlowdownSim>10</rotorVelocitySlowdownSim>
+    </plugin>
+    <plugin name='motor_1' filename='libgazebo_motor_model.so'>
+      <robotNamespace/>
+      <jointName>rotor_2_link_joint</jointName>
+      <linkName>rotor_2_link</linkName>
+      <turningDirection>cw</turningDirection>
+      <timeConstantUp>0.0125</timeConstantUp>
+      <timeConstantDown>0.025</timeConstantDown>
+      <maxRotVelocity>1500</maxRotVelocity>
+      <motorConstant>8.54858e-06</motorConstant>
+      <momentConstant>0.06</momentConstant>
+      <commandSubTopic>/gazebo/command/motor_speed</commandSubTopic>
+      <motorNumber>1</motorNumber>
+      <rotorDragCoefficient>0.000806428</rotorDragCoefficient>
+      <rollingMomentCoefficient>1e-06</rollingMomentCoefficient>
+      <motorSpeedPubTopic>/motor_speed/1</motorSpeedPubTopic>
+      <rotorVelocitySlowdownSim>10</rotorVelocitySlowdownSim>
+    </plugin>
+    <plugin name='motor_2' filename='libgazebo_motor_model.so'>
+      <robotNamespace/>
+      <jointName>rotor_3_link_joint</jointName>
+      <linkName>rotor_3_link</linkName>
+      <turningDirection>ccw</turningDirection>
+      <timeConstantUp>0.0125</timeConstantUp>
+      <timeConstantDown>0.025</timeConstantDown>
+      <maxRotVelocity>1500</maxRotVelocity>
+      <motorConstant>8.54858e-06</motorConstant>
+      <momentConstant>0.06</momentConstant>
+      <commandSubTopic>/gazebo/command/motor_speed</commandSubTopic>
+      <motorNumber>2</motorNumber>
+      <rotorDragCoefficient>0.000806428</rotorDragCoefficient>
+      <rollingMomentCoefficient>1e-06</rollingMomentCoefficient>
+      <motorSpeedPubTopic>/motor_speed/2</motorSpeedPubTopic>
+      <rotorVelocitySlowdownSim>10</rotorVelocitySlowdownSim>
+    </plugin>
+    <plugin name='motor_3' filename='libgazebo_motor_model.so'>
+      <robotNamespace/>
+      <jointName>rotor_4_link_joint</jointName>
+      <linkName>rotor_4_link</linkName>
+      <turningDirection>cw</turningDirection>
+      <timeConstantUp>0.0125</timeConstantUp>
+      <timeConstantDown>0.025</timeConstantDown>
+      <maxRotVelocity>1500</maxRotVelocity>
+      <motorConstant>8.54858e-06</motorConstant>
+      <momentConstant>0.06</momentConstant>
+      <commandSubTopic>/gazebo/command/motor_speed</commandSubTopic>
+      <motorNumber>3</motorNumber>
+      <rotorDragCoefficient>0.000806428</rotorDragCoefficient>
+      <rollingMomentCoefficient>1e-06</rollingMomentCoefficient>
+      <motorSpeedPubTopic>/motor_speed/3</motorSpeedPubTopic>
+      <rotorVelocitySlowdownSim>10</rotorVelocitySlowdownSim>
+    </plugin>
+    <plugin name='motor_4' filename='libgazebo_motor_model.so'>
+      <robotNamespace/>
+      <jointName>rotor_5_link_joint</jointName>
+      <linkName>rotor_5_link</linkName>
+      <turningDirection>ccw</turningDirection>
+      <timeConstantUp>0.0125</timeConstantUp>
+      <timeConstantDown>0.025</timeConstantDown>
+      <maxRotVelocity>1500</maxRotVelocity>
+      <motorConstant>8.54858e-06</motorConstant>
+      <momentConstant>0.06</momentConstant>
+      <commandSubTopic>/gazebo/command/motor_speed</commandSubTopic>
+      <motorNumber>4</motorNumber>
+      <rotorDragCoefficient>0.000806428</rotorDragCoefficient>
+      <rollingMomentCoefficient>1e-06</rollingMomentCoefficient>
+      <motorSpeedPubTopic>/motor_speed/4</motorSpeedPubTopic>
+      <rotorVelocitySlowdownSim>10</rotorVelocitySlowdownSim>
+    </plugin>
+    <plugin name='motor_5' filename='libgazebo_motor_model.so'>
+      <robotNamespace/>
+      <jointName>rotor_6_link_joint</jointName>
+      <linkName>rotor_6_link</linkName>
+      <turningDirection>cw</turningDirection>
+      <timeConstantUp>0.0125</timeConstantUp>
+      <timeConstantDown>0.025</timeConstantDown>
+      <maxRotVelocity>1500</maxRotVelocity>
+      <motorConstant>8.54858e-06</motorConstant>
+      <momentConstant>0.06</momentConstant>
+      <commandSubTopic>/gazebo/command/motor_speed</commandSubTopic>
+      <motorNumber>5</motorNumber>
+      <rotorDragCoefficient>0.000806428</rotorDragCoefficient>
+      <rollingMomentCoefficient>1e-06</rollingMomentCoefficient>
+      <motorSpeedPubTopic>/motor_speed/5</motorSpeedPubTopic>
+      <rotorVelocitySlowdownSim>10</rotorVelocitySlowdownSim>
+    </plugin>
+    <include>
+      <uri>model://gps</uri>
+      <pose>0.05 0 0.04 0 0 0</pose>
+      <name>gps0</name>
+    </include>
+    <joint name='gps0_joint' type='fixed'>
+      <child>gps0::link</child>
+      <parent>base_link</parent>
+    </joint>
+    <plugin name='groundtruth_plugin' filename='libgazebo_groundtruth_plugin.so'>
+      <robotNamespace/>
+    </plugin>
+    <plugin name='magnetometer_plugin' filename='libgazebo_magnetometer_plugin.so'>
+      <robotNamespace/>
+      <magTopic>/mag</magTopic>
+      <magNoise>0.000004</magNoise>
+    </plugin>
+    <plugin name='barometer_plugin' filename='libgazebo_barometer_plugin.so'>
+      <robotNamespace/>
+      <pubRate>50</pubRate>
+      <baroTopic>/baro</baroTopic>
+    </plugin>
+    <plugin name='mavlink_interface' filename='libgazebo_mavlink_interface.so'>
+      <robotNamespace/>
+      <imuSubTopic>/imu</imuSubTopic>
+      <magSubTopic>/mag</magSubTopic>
+      <baroSubTopic>/baro</baroSubTopic>
+      <mavlink_addr>INADDR_ANY</mavlink_addr>
+      <mavlink_tcp_port>4560</mavlink_tcp_port>
+      <mavlink_udp_port>14560</mavlink_udp_port>
+      <serialEnabled>0</serialEnabled>
+      <qgc_addr>INADDR_ANY</qgc_addr>
+      <qgc_udp_port>14550</qgc_udp_port>
+      <sdk_addr>INADDR_ANY</sdk_addr>
+      <sdk_udp_port>14540</sdk_udp_port>
+      <hil_mode>0</hil_mode>
+      <hil_state_level>false</hil_state_level>
+      <enable_lockstep>true</enable_lockstep>
+      <use_tcp>true</use_tcp>
+      <motorSpeedCommandPubTopic>/gazebo/command/motor_speed</motorSpeedCommandPubTopic>
+      <control_channels>
+        <channel name='rotor0'><input_index>0</input_index><input_offset>0</input_offset><input_scaling>1500</input_scaling><zero_position_disarmed>0</zero_position_disarmed><zero_position_armed>100</zero_position_armed><joint_control_type>velocity</joint_control_type></channel>
+        <channel name='rotor1'><input_index>1</input_index><input_offset>0</input_offset><input_scaling>1500</input_scaling><zero_position_disarmed>0</zero_position_disarmed><zero_position_armed>100</zero_position_armed><joint_control_type>velocity</joint_control_type></channel>
+        <channel name='rotor2'><input_index>2</input_index><input_offset>0</input_offset><input_scaling>1500</input_scaling><zero_position_disarmed>0</zero_position_disarmed><zero_position_armed>100</zero_position_armed><joint_control_type>velocity</joint_control_type></channel>
+        <channel name='rotor3'><input_index>3</input_index><input_offset>0</input_offset><input_scaling>1500</input_scaling><zero_position_disarmed>0</zero_position_disarmed><zero_position_armed>100</zero_position_armed><joint_control_type>velocity</joint_control_type></channel>
+        <channel name='rotor4'><input_index>4</input_index><input_offset>0</input_offset><input_scaling>1500</input_scaling><zero_position_disarmed>0</zero_position_disarmed><zero_position_armed>100</zero_position_armed><joint_control_type>velocity</joint_control_type></channel>
+        <channel name='rotor5'><input_index>5</input_index><input_offset>0</input_offset><input_scaling>1500</input_scaling><zero_position_disarmed>0</zero_position_disarmed><zero_position_armed>100</zero_position_armed><joint_control_type>velocity</joint_control_type></channel>
+      </control_channels>
+    </plugin>
+    <static>0</static>
+    <plugin name='gazebo_imu_plugin' filename='libgazebo_imu_plugin.so'>
+      <robotNamespace/>
+      <linkName>base_link</linkName>
+      <imuTopic>/imu</imuTopic>
+      <gyroscopeNoiseDensity>0.0003394</gyroscopeNoiseDensity>
+      <gyroscopeRandomWalk>3.8785e-05</gyroscopeRandomWalk>
+      <gyroscopeBiasCorrelationTime>1000.0</gyroscopeBiasCorrelationTime>
+      <gyroscopeTurnOnBiasSigma>0.0087</gyroscopeTurnOnBiasSigma>
+      <accelerometerNoiseDensity>0.004</accelerometerNoiseDensity>
+      <accelerometerRandomWalk>0.00004</accelerometerRandomWalk>
+      <accelerometerBiasCorrelationTime>300.0</accelerometerBiasCorrelationTime>
+      <accelerometerTurnOnBiasSigma>0.196</accelerometerTurnOnBiasSigma>
+    </plugin>
+    <frame name='battery_joint' attached_to='base_link'>
+      <pose>-0.061817 -2.3e-05 -0.068921 0 -0 0</pose>
+    </frame>
+    <frame name='battery_link' attached_to='battery_joint'/>
+    <frame name='camera_joint' attached_to='base_link'>
+      <pose>0.16709 -0.000654 -0.17212 3.14 0 -1.5708</pose>
+    </frame>
+    <frame name='camera_link' attached_to='camera_joint'/>
+    <frame name='gps_joint' attached_to='base_link'>
+      <pose>-0.000407 1.3e-05 0.17697 0 -0 0</pose>
+    </frame>
+    <frame name='gps_link' attached_to='gps_joint'/>
+    <frame name='imu_joint' attached_to='base_link'>
+      <pose>-0.095599 4.1e-05 -0.013807 0 -0 0</pose>
+    </frame>
+    <frame name='imu_link' attached_to='imu_joint'/>
+    <frame name='landing_gear_1_joint' attached_to='base_link'>
+      <pose>-1.3e-05 0.21064 -0.40283 0 -0 0</pose>
+    </frame>
+    <frame name='landing_gear_1_link' attached_to='landing_gear_1_joint'/>
+    <frame name='landing_gear_2_joint' attached_to='base_link'>
+      <pose>-1.3e-05 -0.21064 -0.40283 0 -0 0</pose>
+    </frame>
+    <frame name='landing_gear_2_link' attached_to='landing_gear_2_joint'/>
+    <!-- D435i：与 myam_sys 的 camera_joint 位姿一致，仅增加深度/彩色传感器插件 -->
+    <include>
+      <uri>model://D435i</uri>
+      <pose>0.16709 -0.00065357 -0.17212 3.14 0 -1.5708</pose>
+    </include>
+    <joint name='d435_mount_joint' type='fixed'>
+      <parent>base_link</parent>
+      <child>D435i::camera_link</child>
+      <axis><xyz>0 0 1</xyz><limit><lower>0</lower><upper>0</upper></limit></axis>
+    </joint>
+  </model>
+</sdf>
