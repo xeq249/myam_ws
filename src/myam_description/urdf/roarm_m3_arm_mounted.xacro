@@ -334,11 +334,28 @@
       <mu2>0.03</mu2>
       <self_collide>false</self_collide>
     </gazebo>
+    <!-- 夹爪-物块：高摩擦 + ODE 软接触，减轻硬碰与打滑，便于闭爪后夹起 -->
     <gazebo reference="gripper_link">
       <material>${body_color}</material>
-      <mu1>0.03</mu1>
-      <mu2>0.03</mu2>
       <self_collide>false</self_collide>
+      <collision>
+        <surface>
+          <contact>
+            <ode>
+              <kp>5500</kp>
+              <kd>48</kd>
+              <max_vel>2.5</max_vel>
+              <min_depth>0.001</min_depth>
+            </ode>
+          </contact>
+          <friction>
+            <ode>
+              <mu>0.95</mu>
+              <mu2>0.95</mu2>
+            </ode>
+          </friction>
+        </surface>
+      </collision>
     </gazebo>
   </xacro:macro>
 </robot>

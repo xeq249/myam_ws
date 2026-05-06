@@ -37,7 +37,7 @@ CATKIN_SKIP_TESTING:BOOL=OFF
 CATKIN_SYMLINK_INSTALL:BOOL=OFF
 
 //List of ';' separated packages to build
-CATKIN_WHITELIST_PACKAGES:STRING=
+CATKIN_WHITELIST_PACKAGES:STRING=real_test
 
 //Path to a program.
 CMAKE_ADDR2LINE:FILEPATH=/usr/bin/addr2line
@@ -519,7 +519,7 @@ image_geometry_DIR:PATH=/opt/ros/noetic/share/image_geometry/cmake
 image_transport_DIR:PATH=/opt/ros/noetic/share/image_transport/cmake
 
 //Path to a library.
-lib:FILEPATH=/usr/lib/liborocos-kdl.so
+lib:FILEPATH=/opt/ros/noetic/lib/libtf.so
 
 //The directory containing a CMake configuration file for message_filters.
 message_filters_DIR:PATH=/opt/ros/noetic/share/message_filters/cmake
@@ -589,6 +589,12 @@ real_roarm_d435_grasp_BINARY_DIR:STATIC=/home/demo/test_ws/build/real_roarm_d435
 
 //Value Computed by CMake
 real_roarm_d435_grasp_SOURCE_DIR:STATIC=/home/demo/test_ws/src/real_roarm_d435_grasp
+
+//Value Computed by CMake
+real_test_BINARY_DIR:STATIC=/home/demo/test_ws/build/real_test
+
+//Value Computed by CMake
+real_test_SOURCE_DIR:STATIC=/home/demo/test_ws/src/real_test
 
 //Value Computed by CMake
 roarm_description_BINARY_DIR:STATIC=/home/demo/test_ws/build/roarm_description
@@ -824,7 +830,7 @@ CMAKE_MODULE_LINKER_FLAGS_RELWITHDEBINFO-ADVANCED:INTERNAL=1
 //ADVANCED property for variable: CMAKE_NM
 CMAKE_NM-ADVANCED:INTERNAL=1
 //number of local generators
-CMAKE_NUMBER_OF_MAKEFILES:INTERNAL=10
+CMAKE_NUMBER_OF_MAKEFILES:INTERNAL=5
 //ADVANCED property for variable: CMAKE_OBJCOPY
 CMAKE_OBJCOPY-ADVANCED:INTERNAL=1
 //ADVANCED property for variable: CMAKE_OBJDUMP

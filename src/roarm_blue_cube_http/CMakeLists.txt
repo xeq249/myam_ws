@@ -1,0 +1,5 @@
+cmake_minimum_required(VERSION 3.0.2)
+project(roarm_blue_cube_http)
+find_package(catkin REQUIRED COMPONENTS rospy sensor_msgs geometry_msgs std_msgs cv_bridge)
+catkin_package()
+catkin_install_python(PROGRAMS scripts/blue_cube_to_roarm_http.py DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION})

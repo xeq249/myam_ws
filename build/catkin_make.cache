@@ -1,2 +1,2 @@
-apriltag_ros:myam_description:myam_simulation:myam_sys_moveit:real_roarm_d435_grasp:roarm_description
--DCATKIN_WHITELIST_PACKAGES= -DCATKIN_DEVEL_PREFIX=/home/demo/test_ws/devel -DCMAKE_INSTALL_PREFIX=/home/demo/test_ws/install -G Unix Makefiles
+apriltag_ros:myam_description:myam_simulation:myam_sys_moveit:real_roarm_d435_grasp:real_test:realsense-ros/realsense2_camera:realsense-ros/realsense2_camera_msgs:realsense-ros/realsense2_description:realsense-ros/realsense2_rgbd_plugin:realsense-ros/realsense2_ros_mqtt_bridge:roarm_description:roarm_moveit
+-DCATKIN_DEVEL_PREFIX=/home/demo/test_ws/devel -DCMAKE_INSTALL_PREFIX=/home/demo/test_ws/install -G Unix Makefiles

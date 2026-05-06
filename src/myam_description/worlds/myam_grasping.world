@@ -108,17 +108,18 @@
           <surface>
             <!-- 软化接触：减轻伪吸附 set_model_state 与穿透修正对冲导致的抖动/Ogre 数值崩溃 -->
             <contact>
+              <!-- 与 URDF 中 gripper_link 侧 kp/kd 同量级，避免一侧极硬一侧极软 -->
               <ode>
-                <kp>8000</kp>
-                <kd>35</kd>
-                <max_vel>3.0</max_vel>
-                <min_depth>0.002</min_depth>
+                <kp>5500</kp>
+                <kd>48</kd>
+                <max_vel>2.5</max_vel>
+                <min_depth>0.001</min_depth>
               </ode>
             </contact>
             <friction>
               <ode>
-                <mu>0.8</mu>
-                <mu2>0.8</mu2>
+                <mu>0.95</mu>
+                <mu2>0.95</mu2>
               </ode>
             </friction>
           </surface>

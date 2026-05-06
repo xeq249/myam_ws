@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>real_test</name>
+  <version>0.1.0</version>
+  <description>真实实验脚本：蓝色立方体 D435 视觉 + RoArm 串口抓取（blue_cube_grasping）。</description>
+  <maintainer email="demo@example.com">demo</maintainer>
+  <license>BSD</license>
+  <buildtool_depend>catkin</buildtool_depend>
+  <depend>rospy</depend>
+  <depend>std_srvs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>cv_bridge</depend>
+  <depend>tf2_ros</depend>
+  <depend>tf2_geometry_msgs</depend>
+  <depend>tf</depend>
+  <exec_depend>roslaunch</exec_depend>
+  <exec_depend>realsense2_camera</exec_depend>
+</package>

@@ -3,6 +3,14 @@
 """
 Offboard：悬停 → 臂准备 → 前飞/下降 → 视觉蓝块 → MoveIt 抓取 → 返航降落。
 依赖 sitl_task + MAVROS + move_group。调参见各 ~ 参数与 launch。
+
+【视觉识别代码在文件中的位置（全文搜索 “# --- 视觉” 或下表关键词）】
+- 参数：# --- 视觉：深度有效范围…---、# --- 视觉：ROS 话题与内参/缓存…---、# --- 视觉：蓝块 HSV/形态学…---
+- 缓存：# --- 视觉：最新彩色图/深度/内参…---；# --- 视觉：订阅 color / depth / camera_info ---
+- 核心算法：# ------------------------------------------------------------------------- 视觉识别核心
+- 后处理：# --- 视觉后处理：规划系下 3D 点 z/工作区球…---、# --- 视觉：质心 (u,v) → 相机 3D…---（print_blue_pose）
+- 主状态机：# --- 主状态机·视觉段…---、# --- 主状态机·抓取段…---
+- 其它：_tcp_pixel_error_vs_last_detection（【视觉辅助】）、_grasp_finishing_refine 文档串（再 detect_blue_uv）
 """
 
 from __future__ import print_function
@@ -226,6 +234,11 @@ class GraspMission(object):
         self.offboard_stream_use_wall_clock = bool(
             rospy.get_param("~offboard_stream_use_wall_clock", True)
         )
+        # >0：对 offboard 位置设定点 (x,y,z) 一阶低通，减轻阶跃/微调引起的机体振荡，利于视觉稳定；相位变化时重置
+        self.offboard_lpf_tau_sec = float(rospy.get_param("~offboard_lpf_tau_sec", 0.0))
+        self._ofb_lpf_xyz = None
+        self._ofb_lpf_t = None
+        self._ofb_lpf_phase = None
 
         self.arm_ready_joints = rospy.get_param(
             "~arm_ready_joints", [0.0, -1.57, 2.93, 0.0, 0.0]
@@ -280,6 +293,22 @@ class GraspMission(object):
         )
         self.gripper_goal_tolerance = float(
             rospy.get_param("~gripper_goal_tolerance", 0.2)
+        )
+        # 闭爪段专用关节容差；<0 表示沿用 gripper_goal_tolerance（默认更紧可提高夹实概率）
+        self.gripper_close_goal_tolerance = float(
+            rospy.get_param("~gripper_close_goal_tolerance", -1.0)
+        )
+        # 闭爪时速度缩放：略慢利于仿真里指尖压实、减轻弹飞
+        self.gripper_close_vel_scale = float(
+            rospy.get_param("~gripper_close_vel_scale", 0.4)
+        )
+        # 主闭合后再多关一小段（米制关节空间：在 gripper_close 基础上再减小该量，≥0）
+        self.gripper_extra_tighten = float(
+            rospy.get_param("~gripper_extra_tighten", 0.0)
+        )
+        # MoveIt 闭爪成功后、收臂返航前等待（秒），让接触/摩擦稳定
+        self.gripper_post_close_settle_sec = float(
+            rospy.get_param("~gripper_post_close_settle_sec", 0.0)
         )
         self.gripper_joint_name = rospy.get_param(
             "~gripper_joint_name", "link5_to_gripper_link"
@@ -450,6 +479,7 @@ class GraspMission(object):
         self.vision_workspace_reject_instead_of_clamp = bool(
             rospy.get_param("~vision_workspace_reject_instead_of_clamp", False)
         )
+        # --- 视觉：深度有效范围与邻域中值半径（与 depth_median / point_cam 共用）---
         self.camera_depth_max_m = float(rospy.get_param("~camera_depth_max_m", 1.8))
         self.depth_median_radius = int(rospy.get_param("~depth_median_radius", 4))
 
@@ -460,6 +490,7 @@ class GraspMission(object):
             "~grasp_joints", [0.0, -1.05, 2.55, -0.5, 0.0]
         )
 
+        # --- 视觉：ROS 话题与内参/缓存（回调写入 _img/_depth/_K）---
         self.color_topic = rospy.get_param(
             "~color_topic", "/camera_realsense/color/image_raw"
         )
@@ -719,6 +750,7 @@ class GraspMission(object):
         self._dynreconf_warned = False
         self._last_traj_dynreconf_wall = 0.0
 
+        # --- 视觉：蓝块 HSV/形态学/稳定帧；识别阶段用像素误差驱动机体平移（refine_xy）---
         self.hsv_lower = np.array(rospy.get_param("~hsv_blue_lower", [72, 18, 25]))
         self.hsv_upper = np.array(rospy.get_param("~hsv_blue_upper", [138, 255, 255]))
         self.min_blob_area = int(rospy.get_param("~min_blob_area", 18))
@@ -771,6 +803,7 @@ class GraspMission(object):
         self.pose = PoseStamped()
         self.phase = self.PH_HOVER_1M
         self.bridge = CvBridge()
+        # --- 视觉：最新彩色图/深度/内参；检测稳定计数与质心（u,v）---
         self._img = None
         self._depth = None
         self._K = None
@@ -804,6 +837,7 @@ class GraspMission(object):
 
         rospy.Subscriber("/mavros/state", State, self._cb_state)
         rospy.Subscriber("/mavros/local_position/pose", PoseStamped, self._cb_pose)
+        # --- 视觉：订阅 color / depth / camera_info ---
         rospy.Subscriber(self.color_topic, Image, self._cb_img, queue_size=1)
         rospy.Subscriber(self.depth_topic, Image, self._cb_depth, queue_size=1)
         rospy.Subscriber(self.camera_info_topic, CameraInfo, self._cb_info, queue_size=1)
@@ -853,15 +887,18 @@ class GraspMission(object):
         self.pose = msg
 
     def _cb_info(self, msg):
+        """视觉：CameraInfo.K → 3x3 内参矩阵，供 point_cam / 投影误差用。"""
         self._K = np.array(msg.K).reshape(3, 3)
 
     def _cb_img(self, msg):
+        """视觉：彩色图 BGR8 → _img，供 HSV 蓝斑检测。"""
         try:
             self._img = self.bridge.imgmsg_to_cv2(msg, "bgr8")
         except CvBridgeError as e:
             rospy.logwarn_throttle(5.0, str(e))
 
     def _cb_depth(self, msg):
+        """视觉：深度图（米）→ _depth，与质心 (u,v) 对齐后取中值得到 z。"""
         try:
             if msg.encoding == "32FC1":
                 self._depth = self.bridge.imgmsg_to_cv2(msg, "32FC1")
@@ -1044,37 +1081,54 @@ class GraspMission(object):
         yr = self._fwd_ramp_y0 + t_a * (self._fwd_ramp_y1 - self._fwd_ramp_y0)
         return xr, yr
 
+    def _apply_offboard_lpf(self, x, y, z, yaw):
+        """一阶低通 (x,y,z)；相位切换时置为当前目标，避免段间拖尾。"""
+        tau = float(self.offboard_lpf_tau_sec)
+        if tau <= 1e-6:
+            return (x, y, z, yaw)
+        p = self.phase
+        t = rospy.get_time()
+        if p != self._ofb_lpf_phase or self._ofb_lpf_xyz is None:
+            self._ofb_lpf_xyz = [float(x), float(y), float(z)]
+            self._ofb_lpf_t = t
+            self._ofb_lpf_phase = p
+            return (self._ofb_lpf_xyz[0], self._ofb_lpf_xyz[1], self._ofb_lpf_xyz[2], yaw)
+        dt = max(0.0, t - float(self._ofb_lpf_t))
+        self._ofb_lpf_t = t
+        a = 1.0 - math.exp(-dt / max(1e-3, tau))
+        self._ofb_lpf_xyz[0] += a * (float(x) - self._ofb_lpf_xyz[0])
+        self._ofb_lpf_xyz[1] += a * (float(y) - self._ofb_lpf_xyz[1])
+        self._ofb_lpf_xyz[2] += a * (float(z) - self._ofb_lpf_xyz[2])
+        return (self._ofb_lpf_xyz[0], self._ofb_lpf_xyz[1], self._ofb_lpf_xyz[2], yaw)
+
     def get_offboard_sp_tuple(self):
         y_cmd = self.offboard_yaw_cmd()
         p = self.phase
         if p == self.PH_DONE:
             return None
-        if p in (
-            self.PH_HOVER_1M,
-            self.PH_ARM_READY,
-            self.PH_ARM_SETTLE,
-        ):
-            return self.x0, self.y0, self.z_high, y_cmd
-        if p == self.PH_FWD:
+        if p in (self.PH_HOVER_1M, self.PH_ARM_READY, self.PH_ARM_SETTLE):
+            x, y, z = self.x0, self.y0, self.z_high
+        elif p == self.PH_FWD:
             fx, fy = self._forward_offboard_xy()
-            return fx, fy, self.z_high, y_cmd
-        if p == self.PH_FWD_SETTLE:
-            return self.x_fwd, self.y_fwd, self.z_high, y_cmd
-        if p in (
+            x, y, z = fx, fy, self.z_high
+        elif p == self.PH_FWD_SETTLE:
+            x, y, z = self.x_fwd, self.y_fwd, self.z_high
+        elif p in (
             self.PH_DESCEND,
             self.PH_LOW_HOLD,
             self.PH_DETECT,
             self.PH_GRASP,
             self.PH_ARM_HOME,
         ):
-            return self.x_fwd, self.y_fwd, self.z_sp, y_cmd
-        if p in (self.PH_CLIMB, self.PH_CLIMB_SETTLE):
-            return self.x_fwd, self.y_fwd, self.z_high, y_cmd
-        if p in (self.PH_RTL, self.PH_LAND):
-            return self.x0, self.y0, self.z_high, float(self.yaw0) + float(
-                self.mission_yaw_offset_rad
-            )
-        return self.x0, self.y0, self.z_high, y_cmd
+            x, y, z = self.x_fwd, self.y_fwd, self.z_sp
+        elif p in (self.PH_CLIMB, self.PH_CLIMB_SETTLE):
+            x, y, z = self.x_fwd, self.y_fwd, self.z_high
+        elif p in (self.PH_RTL, self.PH_LAND):
+            x, y, z = self.x0, self.y0, self.z_high
+            y_cmd = float(self.yaw0) + float(self.mission_yaw_offset_rad)
+        else:
+            x, y, z = self.x0, self.y0, self.z_high
+        return self._apply_offboard_lpf(x, y, z, y_cmd)
 
     def wait_move_group(self, timeout=120.0):
         svc = rospy.get_param("~move_group_ready_service", "/move_group/get_loggers")
@@ -1655,6 +1709,13 @@ class GraspMission(object):
             return None
         return self._gripper_mgc
 
+    # -------------------------------------------------------------------------
+    # 视觉识别核心（不依赖深度学习）：
+    #   _blue_mask_processed → HSV 阈值 + 可选腐蚀膨胀
+    #   detect_blue_uv        → 最大外轮廓面积 + 图像矩质心 (u,v)
+    #   _uv_in_depth / depth_median / point_cam → 深度中值 + K 反投影到相机系
+    #   refine_xy_toward_blue → 质心偏离主点时用 offboard 微调机体 XY
+    # -------------------------------------------------------------------------
     def _blue_mask_processed(self):
         if self._img is None:
             return None
@@ -1793,6 +1854,7 @@ class GraspMission(object):
         self.x_fwd += dx
         self.y_fwd += dy
 
+    # --- 视觉后处理：规划系下 3D 点 z/工作区球（与检测质量、误分割相关）---
     def vision_xyz_plausible(self, xyz):
         """桌面蓝块在 roarm_base_link 下 z 通常远小于 1m；超界多为深度/背景混入。"""
         if xyz is None or len(xyz) != 3:
@@ -1956,7 +2018,8 @@ class GraspMission(object):
     def _grasp_finishing_refine(self, arm, vs0):
         """
         闭合前短 REFINE（对应流程 SEARCH→…→REFINE→GRASP_COMMIT 中的 REFINE 段）：
-        刷新深度并小步修正；由 grasp_commit_* 做触发区+连续帧+超时；碰撞 bumper 可打断。
+        过程中会再次调用 detect_blue_uv / point_cam 刷新质心与规划系目标；
+        由 grasp_commit_* 做触发区+连续帧+超时；碰撞 bumper 可打断。
         """
         if not self.grasp_fin_refine_enable:
             if self.table_contact_retract_enable and getattr(
@@ -2194,6 +2257,7 @@ class GraspMission(object):
                 )
         return True
 
+    # --- 视觉：质心 (u,v) → 相机 3D → TF 到 planning_frame；供 print/log 与抓取入口 ---
     def print_blue_pose(self, u, v):
         """质心在相机光学系与 planning_frame 下的估计（米），供终端查看。"""
         pc = self.point_cam(u, v)
@@ -2882,43 +2946,75 @@ class GraspMission(object):
         可选增量闭合：每小步检查夹爪关节 |effort|，超 grasp_touch_effort_abs 视为已顶到物体，
         触物后仍发一次目标位姿 gripper_close（可略大于 0 留余量，避免全闭挤飞方块）。
         """
+        gt_close = (
+            self.gripper_goal_tolerance
+            if self.gripper_close_goal_tolerance < 0.0
+            else float(self.gripper_close_goal_tolerance)
+        )
+        vs = float(self.gripper_close_vel_scale)
+        vs = max(0.05, min(1.0, vs))
+        gripper.set_goal_joint_tolerance(gt_close)
+        gripper.set_max_velocity_scaling_factor(vs)
+
+        def _go_close(target):
+            target = max(0.0, min(float(target), float(self.gripper_joint_upper)))
+            gripper.set_joint_value_target([target])
+            return gripper.go(wait=True)
+
         tgt = float(self.gripper_close)
         tgt = max(0.0, min(tgt, float(self.gripper_joint_upper)))
         if not self.grasp_incremental_close_enable:
-            gripper.set_joint_value_target([tgt])
-            return gripper.go(wait=True)
-        p0 = self._gripper_joint_pos
-        if p0 is None:
-            gripper.set_joint_value_target([tgt])
-            return gripper.go(wait=True)
-        p0 = float(p0)
-        n = max(2, int(self.grasp_incremental_close_steps))
-        thr = max(0.0, float(self.grasp_touch_effort_abs))
-        for k in range(1, n + 1):
-            alpha = k / float(n)
-            cmd = p0 + (tgt - p0) * alpha
-            cmd = max(0.0, min(cmd, float(self.gripper_joint_upper)))
-            gripper.set_joint_value_target([cmd])
-            if not gripper.go(wait=True):
-                rospy.logwarn(
-                    "[GRIP] 增量闭合 %d/%d 失败 | EN: incremental close failed",
-                    k,
-                    n,
-                )
+            ok = _go_close(tgt)
+            if not ok:
                 return False
-            rospy.sleep(0.03)
-            if thr > 1e-9:
-                eff = self._gripper_joint_effort
-                if eff is not None and abs(float(eff)) >= thr and cmd > tgt + 0.06:
-                    rospy.loginfo(
-                        "[GRIP] |eff|=%.3f≥%.3f 触物推测→最终闭合 tgt=%.3f | EN: touch, final close",
-                        abs(float(eff)),
-                        thr,
-                        tgt,
+        else:
+            p0 = self._gripper_joint_pos
+            if p0 is None:
+                if not _go_close(tgt):
+                    return False
+            else:
+                p0 = float(p0)
+                n = max(2, int(self.grasp_incremental_close_steps))
+                thr = max(0.0, float(self.grasp_touch_effort_abs))
+                for k in range(1, n + 1):
+                    alpha = k / float(n)
+                    cmd = p0 + (tgt - p0) * alpha
+                    cmd = max(0.0, min(cmd, float(self.gripper_joint_upper)))
+                    if not _go_close(cmd):
+                        rospy.logwarn(
+                            "[GRIP] 增量闭合 %d/%d 失败 | EN: incremental close failed",
+                            k,
+                            n,
+                        )
+                        return False
+                    rospy.sleep(0.03)
+                    if thr > 1e-9:
+                        eff = self._gripper_joint_effort
+                        if eff is not None and abs(float(eff)) >= thr and cmd > tgt + 0.06:
+                            rospy.loginfo(
+                                "[GRIP] |eff|=%.3f≥%.3f 触物推测→最终闭合 tgt=%.3f | EN: touch, final close",
+                                abs(float(eff)),
+                                thr,
+                                tgt,
+                            )
+                            break
+                if not _go_close(tgt):
+                    return False
+
+        ex = float(self.gripper_extra_tighten)
+        if ex > 1e-6:
+            tgt2 = max(0.0, tgt - ex)
+            if tgt2 < tgt - 1e-6:
+                rospy.loginfo(
+                    "[GRIP] 二次收紧 %.3f → %.3f | EN: extra tighten",
+                    tgt,
+                    tgt2,
+                )
+                if not _go_close(tgt2):
+                    rospy.logwarn(
+                        "[GRIP] 二次收紧 MoveIt 失败，保留首次闭合 | EN: extra tighten failed"
                     )
-                    break
-        gripper.set_joint_value_target([tgt])
-        return gripper.go(wait=True)
+        return True
 
     def _joint_pregrasp_grasp(self, arm, gripper):
         if self._consume_table_contact_retract(arm):
@@ -3269,6 +3365,7 @@ class GraspMission(object):
                 "[GRIP] MoveIt 闭爪失败 | EN: gripper close (MoveIt) failed"
             )
             return False
+        rospy.sleep(max(0.0, float(self.gripper_post_close_settle_sec)))
         return True
 
     def exec_arm_joints(self, joints, vel_scale=None, accel_scale=None, joint_tol=None):
@@ -3302,7 +3399,7 @@ class GraspMission(object):
 
     def _tcp_pixel_error_vs_last_detection(self, arm):
         """
-        将 hand_tcp（规划系）变到相机光学系，按 camera_info 投影为像素，与检测稳定时的 uv 比偏差（像素）。
+        【视觉辅助】将 hand_tcp（规划系）变到相机光学系，按 camera_info 投影为像素，与检测稳定时的 uv 比偏差（像素）。
         用于「规划系 3D 目标有偏但画面仍对准」时的辅助判据；与相机到蓝块的深度（米）不是同一量纲，不宜直接相减比较。
         """
         if self._K is None or self._last_uv is None:
@@ -3709,6 +3806,7 @@ def main():
                 rate.sleep()
                 continue
 
+            # --- 主状态机·视觉段：每帧 HSV+质心，稳定 N 帧后 print_blue_pose → 进入抓取 ---
             if m.phase == m.PH_DETECT:
                 maybe_publish_offboard(m, m.x_fwd, m.y_fwd, m.z_sp, yaw)
                 uv = m.detect_blue_uv()
@@ -3744,6 +3842,7 @@ def main():
                 rate.sleep()
                 continue
 
+            # --- 主状态机·抓取段：可再次 print_blue_pose / point_cam+TF 刷新视觉三维目标，再 exec_arm_sequence ---
             if m.phase == m.PH_GRASP:
                 maybe_publish_offboard(m, m.x_fwd, m.y_fwd, m.z_sp, yaw)
                 if m._last_uv is None:

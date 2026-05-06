@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>roarm_blue_cube_http</name>
+  <version>0.2.0</version>
+  <description>Detect blue cube with RealSense D435 and control RoArm-M3 over HTTP.</description>
+  <maintainer email="demo@example.com">demo</maintainer>
+  <license>MIT</license>
+  <buildtool_depend>catkin</buildtool_depend>
+  <depend>rospy</depend>
+  <depend>sensor_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>std_msgs</depend>
+  <depend>cv_bridge</depend>
+  <exec_depend>realsense2_camera</exec_depend>
+</package>

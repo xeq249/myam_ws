@@ -20,9 +20,11 @@
     演示「只要闭合就夹住」（忽略距离，方块会瞬移到爪尖）：
       roslaunch myam_simulation gazebo_fake_blue_attach.launch skip_distance_check:=true
 
-    默认 attach_pose_source=tf、attach_tf_frame=hand_tcp：方块贴在规划 TCP（指尖），勿再用 gripper_link（关节在腕部，方块会像贴在 link5 侧）。
-    微调指尖相对位置：改 offset_*_m（在 hand_tcp / 参考连杆坐标系下）。
-    抖动/崩溃时可：降低 rate_hz；开启 attach_soft_physics_on_attach；确认 attach_reference_link 与 Gazebo 连杆一致。
+    attach_tf_frame 仅用于测距/TF；Gazebo 吸附参考系默认用 gripper_link（脚本内 attach_reference_link 空时），
+    用 offset_*_m 在 gripper_link 系下对准指尖。仍可用 attach_reference_link:=myuam::某link 显式覆盖。
+    先 set_model_state 成功再关重力，避免“无重力未跟上”导致 Ogre NaN。返航时若张爪掉块，可
+      allow_detach_by_gripper_open:=false
+    （仅 roslaunch enable:=false 时脱附，再手动 reset 方块）。
 
     若要坚持旧行为（按 Gazebo link 吸附）：
       attach_pose_source:=link_states
@@ -36,23 +38,41 @@
   <arg name="tf_parent_frame" default="map"/>
   <arg name="attach_link_name" default="gripper_link"/>
   <arg name="cube_model_name" default="grasp_target_cube"/>
-  <arg name="max_attach_dist_m" default="0.22"/>
+  <!-- 闭爪吸附：TCP-块质心距须小于此；过大易在「未对准、仅高度接近」时误吸（~0.27m 会把台上方块瞬移） -->
+  <arg name="max_attach_dist_m" default="0.10"/>
   <arg name="attach_while_open_enable" default="false"/>
   <arg name="gripper_open_min_for_proximity_attach" default="0.58"/>
-  <arg name="max_attach_dist_open_m" default="0.13"/>
+  <!-- 开爪近距吸附阈值宜紧（~3–5cm），过大会在悬停未抓取前就误吸 -->
+  <arg name="max_attach_dist_open_m" default="0.05"/>
   <!-- 与脚本默认一致：仅闭爪后吸附；返航保持 jp<closed 则持续 set_model_state 跟随 -->
   <arg name="gripper_closed_below" default="0.45"/>
   <arg name="gripper_open_above" default="0.62"/>
-  <arg name="rate_hz" default="60.0"/>
+  <!-- 过高会加快「是否可吸附」判定与去抖；吸附跟随由 attach_sync_max_hz 单独限频 -->
+  <arg name="rate_hz" default="25.0"/>
   <arg name="detach_open_debounce_sec" default="0.35"/>
+  <arg name="debounce_sec" default="0.32"/>
+  <!-- 每次 set_model_state 成功后短静默，减轻与 ODE 接触连续对冲导致炸模 -->
+  <arg name="attach_min_quiet_sec_after_snap" default="0.14"/>
   <!-- 相对连杆吸附 + 软化方块动力学，减轻穿透抖动与 gzserver/Ogre 崩溃 -->
   <arg name="attach_use_reference_frame" default="true"/>
   <arg name="attach_reference_link" default=""/>
   <arg name="attach_soft_physics_on_attach" default="true"/>
-  <arg name="attach_soft_mass_scale" default="0.06"/>
+  <arg name="attach_soft_mass_scale" default="0.035"/>
+  <arg name="attach_sync_max_hz" default="10.0"/>
+  <arg name="attach_gripper_delta_skip_m" default="0.0015"/>
+  <arg name="attach_sync_force_sec" default="0.35"/>
   <arg name="offset_x_m" default="0.0"/>
   <arg name="offset_y_m" default="0.0"/>
   <arg name="offset_z_m" default="0.0"/>
+  <arg name="attach_approach_latch_enable" default="true"/>
+  <arg name="attach_approach_latch_min_m" default="0.16"/>
+  <arg name="allow_detach_by_gripper_open" default="true"/>
+  <arg name="attach_require_saw_open_enable" default="true"/>
+  <arg name="attach_saw_open_min_jp" default="0.48"/>
+  <!-- true：相对 gripper_link 时用 TF 对齐 hand_tcp，避免块吸在腕部/爪根致穿插、Ogre NaN -->
+  <arg name="attach_offset_use_hand_tcp_tf" default="true"/>
+  <!-- 块在 reference 系下姿态用单位四元数，减轻与爪 STL 大角度重叠 -->
+  <arg name="attach_cube_identity_orientation_in_ref" default="true"/>
 
   <node pkg="myam_simulation" type="gazebo_fake_blue_attach.py" name="gazebo_fake_blue_attach" output="screen">
     <param name="enable" value="$(arg enable)"/>
@@ -71,13 +91,25 @@
     <param name="gripper_closed_below" value="$(arg gripper_closed_below)"/>
     <param name="gripper_open_above" value="$(arg gripper_open_above)"/>
     <param name="rate_hz" value="$(arg rate_hz)"/>
+    <param name="debounce_sec" value="$(arg debounce_sec)"/>
     <param name="detach_open_debounce_sec" value="$(arg detach_open_debounce_sec)"/>
+    <param name="attach_min_quiet_sec_after_snap" value="$(arg attach_min_quiet_sec_after_snap)"/>
     <param name="attach_use_reference_frame" value="$(arg attach_use_reference_frame)"/>
     <param name="attach_reference_link" value="$(arg attach_reference_link)"/>
     <param name="attach_soft_physics_on_attach" value="$(arg attach_soft_physics_on_attach)"/>
     <param name="attach_soft_mass_scale" value="$(arg attach_soft_mass_scale)"/>
+    <param name="attach_sync_max_hz" value="$(arg attach_sync_max_hz)"/>
+    <param name="attach_gripper_delta_skip_m" value="$(arg attach_gripper_delta_skip_m)"/>
+    <param name="attach_sync_force_sec" value="$(arg attach_sync_force_sec)"/>
     <param name="offset_x_m" value="$(arg offset_x_m)"/>
     <param name="offset_y_m" value="$(arg offset_y_m)"/>
     <param name="offset_z_m" value="$(arg offset_z_m)"/>
+    <param name="attach_approach_latch_enable" value="$(arg attach_approach_latch_enable)"/>
+    <param name="attach_approach_latch_min_m" value="$(arg attach_approach_latch_min_m)"/>
+    <param name="allow_detach_by_gripper_open" value="$(arg allow_detach_by_gripper_open)"/>
+    <param name="attach_require_saw_open_enable" value="$(arg attach_require_saw_open_enable)"/>
+    <param name="attach_saw_open_min_jp" value="$(arg attach_saw_open_min_jp)"/>
+    <param name="attach_offset_use_hand_tcp_tf" value="$(arg attach_offset_use_hand_tcp_tf)"/>
+    <param name="attach_cube_identity_orientation_in_ref" value="$(arg attach_cube_identity_orientation_in_ref)"/>
   </node>
 </launch>

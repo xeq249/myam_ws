@@ -1,0 +1,8 @@
+prefix=/home/demo/test_ws/install
+
+Name: real_test
+Description: Description of real_test
+Version: 0.1.0
+Cflags: 
+Libs: -L${prefix}/lib 
+Requires: rospy std_srvs sensor_msgs geometry_msgs cv_bridge tf2_ros tf2_geometry_msgs tf
