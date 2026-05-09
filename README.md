@@ -44,7 +44,7 @@
 ## 编译
 
 ```bash
-cd /home/.../myam_ws
+cd /home/user/myam_ws
 source /opt/ros/noetic/setup.bash
 catkin_make   # 或 catkin build
 source devel/setup.bash
