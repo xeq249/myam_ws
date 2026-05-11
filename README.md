@@ -1,6 +1,6 @@
 # 无人机–机械臂协同控制（毕业设计代码仓库）
 
-本目录为 **ROS catkin 工作空间 `test_ws`**，面向 **多旋翼无人机 + RoArm M3 机械臂** 的协同控制与抓取相关研究：包含 **整机 URDF / Gazebo 仿真、PX4 SITL、MAVROS、MoveIt 运动规划、RealSense D435 与 AprilTag 感知**，以及 **独立机械臂在真机侧的 HTTP 示例节点**。
+本目录为 **ROS catkin 工作空间 `myam_ws`**，面向 **多旋翼无人机 + RoArm M3 机械臂** 的协同控制与抓取相关研究：包含 **整机 URDF / Gazebo 仿真、PX4 SITL、MAVROS、MoveIt 运动规划、RealSense D435 与 AprilTag 感知**，以及 **独立机械臂在真机侧的 HTTP 示例节点**。
 
 > **说明**：仿真与整机 MoveIt 配置以 **`myam_sys`**（挂载机械臂与 D435 的无人机模型）为主；单独机械臂的 MoveIt 配置见 **`roarm_moveit`**。真机舵机/USB 串口需在固件侧或自研驱动与 ROS 控制器之间做桥接，本仓库侧重仿真与 ROS 上层逻辑。
 
@@ -44,7 +44,7 @@
 ## 编译
 
 ```bash
-cd /path/to/test_ws
+cd /home/user/myam_ws
 source /opt/ros/noetic/setup.bash
 catkin_make   # 或 catkin build
 source devel/setup.bash
