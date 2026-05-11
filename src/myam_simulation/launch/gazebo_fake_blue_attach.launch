@@ -48,8 +48,12 @@
   <arg name="gripper_closed_below" default="0.45"/>
   <arg name="gripper_open_above" default="0.62"/>
   <!-- 过高会加快「是否可吸附」判定与去抖；吸附跟随由 attach_sync_max_hz 单独限频 -->
-  <arg name="rate_hz" default="25.0"/>
+  <arg name="rate_hz" default="15.0"/>
   <arg name="detach_open_debounce_sec" default="0.35"/>
+  <!-- 可选真实夹持模式：吸到夹爪中心后，闭爪压紧一小段时间即解除吸附，后续靠 Gazebo 接触夹持 -->
+  <arg name="detach_after_closed_enable" default="false"/>
+  <arg name="detach_after_closed_below" default="0.30"/>
+  <arg name="detach_after_closed_sec" default="0.45"/>
   <arg name="debounce_sec" default="0.32"/>
   <!-- 每次 set_model_state 成功后短静默，减轻与 ODE 接触连续对冲导致炸模 -->
   <arg name="attach_min_quiet_sec_after_snap" default="0.14"/>
@@ -58,7 +62,7 @@
   <arg name="attach_reference_link" default=""/>
   <arg name="attach_soft_physics_on_attach" default="true"/>
   <arg name="attach_soft_mass_scale" default="0.035"/>
-  <arg name="attach_sync_max_hz" default="10.0"/>
+  <arg name="attach_sync_max_hz" default="8.0"/>
   <arg name="attach_gripper_delta_skip_m" default="0.0015"/>
   <arg name="attach_sync_force_sec" default="0.35"/>
   <arg name="offset_x_m" default="0.0"/>
@@ -93,6 +97,9 @@
     <param name="rate_hz" value="$(arg rate_hz)"/>
     <param name="debounce_sec" value="$(arg debounce_sec)"/>
     <param name="detach_open_debounce_sec" value="$(arg detach_open_debounce_sec)"/>
+    <param name="detach_after_closed_enable" value="$(arg detach_after_closed_enable)"/>
+    <param name="detach_after_closed_below" value="$(arg detach_after_closed_below)"/>
+    <param name="detach_after_closed_sec" value="$(arg detach_after_closed_sec)"/>
     <param name="attach_min_quiet_sec_after_snap" value="$(arg attach_min_quiet_sec_after_snap)"/>
     <param name="attach_use_reference_frame" value="$(arg attach_use_reference_frame)"/>
     <param name="attach_reference_link" value="$(arg attach_reference_link)"/>

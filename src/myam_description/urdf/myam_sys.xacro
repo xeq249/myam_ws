@@ -24,7 +24,7 @@
   </xacro:if>
   <xacro:include filename="$(find myam_description)/xacro/realsense_d435.xacro"/>
   <!-- 与原先 camera_joint 同位置；rpy：绕 Y 俯仰 +90°，使相机光轴由机头前向(+X) 转为朝向地面(−Z) -->
-  <xacro:realsense_d435 sensor_name="camera" parent_link="base_link" rate="30">
+  <xacro:realsense_d435 sensor_name="camera" parent_link="base_link" rate="20">
     <origin xyz="0.155 -0.005 -0.158" rpy="0 1.5708 0"/>
   </xacro:realsense_d435>
   <!-- RoArm M3：关节名与 roarm_description 一致。xy 沿用原 arm_base_joint；z 用 arm_mount_z 微调避穿模。

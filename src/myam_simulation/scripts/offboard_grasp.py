@@ -310,6 +310,35 @@ class GraspMission(object):
         self.gripper_post_close_settle_sec = float(
             rospy.get_param("~gripper_post_close_settle_sec", 0.0)
         )
+        # 闭爪前视觉精对准：让“张开夹爪的包围中心”对齐当前相机蓝块质心，再闭合。
+        # grasp_center_offset 是 ee_tcp_frame 下的局部偏移；默认 hand_tcp 即夹取中心。
+        self.grasp_center_refine_enable = bool(
+            rospy.get_param("~grasp_center_refine_enable", True)
+        )
+        self.grasp_center_offset = rospy.get_param(
+            "~grasp_center_offset", [0.0, 0.0, 0.0]
+        )
+        self.grasp_center_target_offset = rospy.get_param(
+            "~grasp_center_target_offset", [0.0, 0.0, 0.0]
+        )
+        self.grasp_center_refine_iters = int(
+            rospy.get_param("~grasp_center_refine_iters", 3)
+        )
+        self.grasp_center_refine_settle_sec = float(
+            rospy.get_param("~grasp_center_refine_settle_sec", 0.10)
+        )
+        self.grasp_center_refine_min_disp_m = float(
+            rospy.get_param("~grasp_center_refine_min_disp_m", 0.003)
+        )
+        self.grasp_center_refine_max_step_m = float(
+            rospy.get_param("~grasp_center_refine_max_step_m", 0.030)
+        )
+        self.grasp_center_refine_pixel_tol_px = float(
+            rospy.get_param("~grasp_center_refine_pixel_tol_px", 24.0)
+        )
+        self.grasp_center_refine_vel_scale = float(
+            rospy.get_param("~grasp_center_refine_vel_scale", 0.30)
+        )
         self.gripper_joint_name = rospy.get_param(
             "~gripper_joint_name", "link5_to_gripper_link"
         )
@@ -3341,6 +3370,9 @@ class GraspMission(object):
                 )
             return False
 
+        if not self._grasp_center_refine_before_close(arm):
+            return False
+
         pinch = float(self.gripper_soft_pinch)
         lo = float(self.gripper_close) + 0.03
         hi = float(self.gripper_open_max) - 0.05
@@ -3428,6 +3460,178 @@ class GraspMission(object):
         du = u - float(self._last_uv[0])
         dv = v - float(self._last_uv[1])
         return float(math.hypot(du, dv))
+
+    def get_grasp_center_xyz_in_ref_frame(self):
+        """
+        张开夹爪的包围中心在 ref_frame 下的 xyz。
+        默认等于 hand_tcp；若实际两指中心相对 TCP 有偏差，用 ~grasp_center_offset 标定。
+        """
+        try:
+            off = list(self.grasp_center_offset)
+            if len(off) != 3:
+                off = [0.0, 0.0, 0.0]
+            p_local = Point(float(off[0]), float(off[1]), float(off[2]))
+        except Exception:
+            p_local = Point(0.0, 0.0, 0.0)
+        p_tf = transform_point(
+            self.tf_buffer,
+            p_local,
+            self.ref_frame,
+            self.ee_tcp_frame,
+            timeout=1.0,
+        )
+        if p_tf is None:
+            return None
+        return np.array([p_tf.x, p_tf.y, p_tf.z], dtype=np.float64)
+
+    def _project_ref_xyz_to_pixel(self, xyz):
+        if self._K is None or xyz is None:
+            return None
+        pt = Point(float(xyz[0]), float(xyz[1]), float(xyz[2]))
+        pc = transform_point(
+            self.tf_buffer,
+            pt,
+            self.camera_optical_frame,
+            self.ref_frame,
+            timeout=0.8,
+        )
+        if pc is None:
+            return None
+        z = max(float(pc.z), max(1e-6, float(self.grasp_tcp_proj_min_z_m)))
+        fx, fy = float(self._K[0, 0]), float(self._K[1, 1])
+        cx, cy = float(self._K[0, 2]), float(self._K[1, 2])
+        return (fx * float(pc.x) / z + cx, fy * float(pc.y) / z + cy)
+
+    def _detect_blue_xyz_in_ref(self):
+        uv = self.detect_blue_uv()
+        if uv is None:
+            return None, None
+        pc = self.point_cam(uv[0], uv[1])
+        if pc is None:
+            return uv, None
+        pb = transform_point(
+            self.tf_buffer,
+            pc,
+            self.ref_frame,
+            self.camera_optical_frame,
+            timeout=1.0,
+        )
+        if pb is None:
+            return uv, None
+        raw = (pb.x, pb.y, pb.z)
+        if not self.vision_xyz_plausible(raw):
+            return uv, None
+        try:
+            off = np.asarray(self.vision_target_offset, dtype=np.float64).reshape(3)
+            cen_off = np.asarray(self.grasp_center_target_offset, dtype=np.float64).reshape(3)
+        except Exception:
+            off = np.zeros(3, dtype=np.float64)
+            cen_off = np.zeros(3, dtype=np.float64)
+        return uv, np.asarray(raw, dtype=np.float64) + off + cen_off
+
+    def _grasp_center_refine_before_close(self, arm):
+        """
+        闭爪前、夹爪保持张开时做短步视觉精对准：
+        目标是让夹爪包围中心（grasp_center_offset）到达当前蓝块质心，而不是只让 TCP 到达旧规划点。
+        """
+        if not self.grasp_center_refine_enable:
+            return True
+        if self.table_contact_retract_enable and getattr(
+            self, "_table_contact_seen", False
+        ):
+            self._handle_table_contact_retract(arm)
+            return False
+        n_iter = max(0, int(self.grasp_center_refine_iters))
+        if n_iter <= 0:
+            return True
+        vmin = max(0.08, float(self.vision_min_velocity_scale))
+        vs = max(
+            vmin,
+            min(float(self.vision_waypoint_vel_cap), float(self.grasp_center_refine_vel_scale)),
+        )
+        for k in range(n_iter):
+            if self.table_contact_retract_enable and getattr(
+                self, "_table_contact_seen", False
+            ):
+                self._handle_table_contact_retract(arm)
+                return False
+            rospy.sleep(max(0.0, float(self.grasp_center_refine_settle_sec)))
+            uv, blue = self._detect_blue_xyz_in_ref()
+            if blue is None:
+                rospy.logwarn_throttle(
+                    3.0,
+                    "[CENTER] 对准 %d: 无有效蓝块3D | EN: no valid blue xyz",
+                    k + 1,
+                )
+                continue
+            center = self.get_grasp_center_xyz_in_ref_frame()
+            tcp = self.get_tcp_xyz_in_ref_frame(arm)
+            if center is None or tcp is None:
+                rospy.logwarn_throttle(
+                    3.0,
+                    "[CENTER] 对准 %d: 无夹爪中心/TCP TF | EN: no center/tcp TF",
+                    k + 1,
+                )
+                continue
+            delta = blue - center
+            dn = float(np.linalg.norm(delta))
+            px_err = None
+            c_uv = self._project_ref_xyz_to_pixel(center)
+            if uv is not None and c_uv is not None:
+                px_err = float(
+                    math.hypot(c_uv[0] - float(uv[0]), c_uv[1] - float(uv[1]))
+                )
+            px_ok = (
+                px_err is not None
+                and float(self.grasp_center_refine_pixel_tol_px) > 0.0
+                and px_err <= float(self.grasp_center_refine_pixel_tol_px)
+            )
+            # 像素对准只能说明横向基本对齐；仍要求 3D 距离足够小，避免深度方向没套住就闭爪。
+            min_3d = float(self.grasp_center_refine_min_disp_m)
+            px_3d_ok = px_ok and dn <= max(0.012, min_3d * 4.0)
+            if dn < min_3d or px_3d_ok:
+                self._last_exec_p_fin = [
+                    float(tcp[0]),
+                    float(tcp[1]),
+                    float(tcp[2]),
+                ]
+                rospy.loginfo(
+                    "[CENTER] 夹爪中心已对准蓝块: |d|=%.4f m px=%s | EN: grasp center aligned",
+                    dn,
+                    ("%.1f" % px_err) if px_err is not None else "n/a",
+                )
+                return True
+            mx = max(0.004, float(self.grasp_center_refine_max_step_m))
+            if dn > mx:
+                delta = delta / dn * mx
+            goal = tcp + delta
+            self._apply_vision_execution_tolerances(arm)
+            self.configure_arm_move_group(
+                arm,
+                vel_scaling=max(float(self.grasp_center_refine_vel_scale), vmin),
+                accel_scaling=max(float(self.grasp_center_refine_vel_scale), vmin),
+            )
+            rospy.loginfo(
+                "[CENTER] 对准 %d/%d: center→blue |d|=%.4f step=%.4f px=%s | EN: align grasp center",
+                k + 1,
+                n_iter,
+                dn,
+                float(np.linalg.norm(delta)),
+                ("%.1f" % px_err) if px_err is not None else "n/a",
+            )
+            if not self._go_vision_waypoint(
+                arm,
+                [float(goal[0]), float(goal[1]), float(goal[2])],
+                "夹爪中心对准%d" % (k + 1),
+                vs,
+            ):
+                rospy.logwarn(
+                    "[CENTER] 对准 %d MoveIt 失败，继续尝试闭爪 | EN: center align failed",
+                    k + 1,
+                )
+                return True
+            self._last_exec_p_fin = [float(goal[0]), float(goal[1]), float(goal[2])]
+        return True
 
     def get_tcp_xyz_in_ref_frame(self, arm=None):
         """

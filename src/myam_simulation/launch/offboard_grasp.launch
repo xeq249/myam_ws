@@ -24,7 +24,7 @@
     台面/蓝块在相机画面左侧（机体整体偏右）→ 应减小 lat 或改为负值（例如 -0.15～-0.45，小步试）。
     目标在画面右侧则相反（略增 lat）。勿与「蓝块在画面左/右」和「增 lat」记反。
   -->
-  <arg name="approach_lateral_m" default="0.20"/>
+  <arg name="approach_lateral_m" default="-0.15"/>
   <!-- 规划系 roarm_base_link 下加到视觉质心的平移修正（米），按仿真手眼标定改 -->
   <arg name="vision_target_offset_x" default="0.0"/>
   <arg name="vision_target_offset_y" default="0.0"/>
@@ -38,7 +38,7 @@
   <arg name="camera_info_topic" default="/camera_realsense/color/camera_info"/>
 
   <!-- true：并行启动 Gazebo 伪磁吸；须已开 sitl_task + Gazebo；默认关闭 -->
-  <arg name="use_gazebo_fake_attach" default="false"/>
+  <arg name="use_gazebo_fake_attach" default="true"/>
   <arg name="fake_attach_skip_distance" default="false"/>
   <!-- 非空则覆盖 reference_frame（空=脚本默认 myuam::gripper_link + offset 对准 TCP） -->
   <arg name="fake_attach_reference_link" default=""/>
@@ -50,21 +50,25 @@
       <arg name="enable" value="true"/>
       <arg name="skip_distance_check" value="$(arg fake_attach_skip_distance)"/>
       <!-- 仅闭爪+距离内吸附；若实爪总夹空可试 attach_while_open_enable:=true 并收紧 max_attach_dist_open_m（易误吸须谨慎） -->
-      <arg name="attach_while_open_enable" value="false"/>
+      <arg name="attach_while_open_enable" value="true"/>
+      <arg name="max_attach_dist_open_m" value="0.055"/>
       <!-- jp 低于 closed_below 视为已闭；与较紧真抓取对齐，避免半开也触发瞬移 -->
       <arg name="gripper_closed_below" value="0.30"/>
       <arg name="gripper_open_above" value="0.63"/>
       <!-- 须与真抓取同量级（~几～十几 cm）；过大会在低空、爪仍闭时把台上方块瞬移到爪上 -->
-      <arg name="max_attach_dist_m" value="0.10"/>
+      <arg name="max_attach_dist_m" value="0.12"/>
       <arg name="attach_require_saw_open_enable" value="true"/>
       <arg name="attach_saw_open_min_jp" value="0.48"/>
       <arg name="debounce_sec" value="0.34"/>
-      <arg name="rate_hz" value="25.0"/>
+      <arg name="rate_hz" value="15.0"/>
       <arg name="detach_open_debounce_sec" value="0.35"/>
+      <arg name="detach_after_closed_enable" value="true"/>
+      <arg name="detach_after_closed_below" value="0.08"/>
+      <arg name="detach_after_closed_sec" value="0.45"/>
       <arg name="attach_use_reference_frame" value="true"/>
       <arg name="attach_soft_physics_on_attach" value="true"/>
       <arg name="attach_soft_mass_scale" value="0.035"/>
-      <arg name="attach_sync_max_hz" value="10.0"/>
+      <arg name="attach_sync_max_hz" value="8.0"/>
       <arg name="attach_gripper_delta_skip_m" value="0.0015"/>
       <arg name="attach_sync_force_sec" value="0.35"/>
       <arg name="attach_min_quiet_sec_after_snap" value="0.16"/>
@@ -84,10 +88,10 @@
     <param name="approach_forward_extra_m" value="$(arg approach_forward_extra_m)"/>
     <param name="forward_ramp_sec" value="$(arg forward_ramp_sec)"/>
     <param name="approach_lateral_m" value="$(arg approach_lateral_m)"/>
-    <param name="hold_sec" value="1.8"/>
+    <param name="hold_sec" value="0.75"/>
     <!-- 低空识别前缓降（秒）：越大越慢，减轻起落架砸台面 -->
     <param name="descend_duration" value="22.0"/>
-    <param name="low_hold_sec" value="3.0"/>
+    <param name="low_hold_sec" value="1.2"/>
     <param name="color_topic" value="$(arg color_topic)"/>
     <param name="depth_topic" value="$(arg depth_topic)"/>
     <param name="camera_info_topic" value="$(arg camera_info_topic)"/>
@@ -107,8 +111,8 @@
     <!-- 与 offboard_grasp_blue_cube.launch 一致：home/准备段速度与加速度缩放 -->
     <param name="arm_home_vel_scaling" value="0.08"/>
     <param name="arm_home_accel_scaling" value="0.08"/>
-    <param name="arm_ready_vel_scaling" value="0.08"/>
-    <param name="arm_ready_accel_scaling" value="0.08"/>
+    <param name="arm_ready_vel_scaling" value="0.18"/>
+    <param name="arm_ready_accel_scaling" value="0.18"/>
     <param name="grasp_max_retries" value="2"/>
     <param name="grasp_retry_forward_m" value="$(arg grasp_retry_forward_m)"/>
     <!-- 检测阶段朝蓝斑中心微调：多稳几帧、单步略大，减轻「目在画边、规划系 y 大」 -->
@@ -125,15 +129,25 @@
     <param name="detect_refine_xy_stride" value="2"/>
     <param name="gripper_open_max" value="1.5"/>
     <!-- URDF：0≈全闭、1.5≈全开。返航掉块多为夹合力不足：略减小该值更紧；若挤飞蓝块再微增 -->
-    <param name="gripper_close" value="0.06"/>
+    <param name="gripper_close" value="0.035"/>
     <!-- 闭爪关节容差过大时 MoveIt 早停→指尖未压实；与 gripper_close_goal_tolerance 配合 -->
     <param name="gripper_goal_tolerance" value="0.10"/>
-    <param name="gripper_close_goal_tolerance" value="0.055"/>
+    <param name="gripper_close_goal_tolerance" value="0.020"/>
     <param name="gripper_close_vel_scale" value="0.22"/>
     <!-- 首次到 gripper_close 后再关一小段，提高夹住概率；台面碰撞/挤飞则略减 -->
-    <param name="gripper_extra_tighten" value="0.028"/>
+    <param name="gripper_extra_tighten" value="0.020"/>
+    <!-- 闭爪前：让张开夹爪的包围中心对准相机蓝块质心，再闭合。offset 为 hand_tcp 局部坐标系下的夹取中心标定 -->
+    <param name="grasp_center_refine_enable" value="true"/>
+    <rosparam param="grasp_center_offset">[0.0, 0.0, 0.0]</rosparam>
+    <rosparam param="grasp_center_target_offset">[0.0, 0.0, 0.0]</rosparam>
+    <param name="grasp_center_refine_iters" value="3"/>
+    <param name="grasp_center_refine_settle_sec" value="0.10"/>
+    <param name="grasp_center_refine_min_disp_m" value="0.003"/>
+    <param name="grasp_center_refine_max_step_m" value="0.030"/>
+    <param name="grasp_center_refine_pixel_tol_px" value="22.0"/>
+    <param name="grasp_center_refine_vel_scale" value="0.30"/>
     <!-- 闭爪后、收臂爬升前静置，减轻 Gazebo 接触未稳就甩飞 -->
-    <param name="gripper_post_close_settle_sec" value="0.50"/>
+    <param name="gripper_post_close_settle_sec" value="0.75"/>
     <param name="gripper_soft_pinch" value="$(arg gripper_soft_pinch)"/>
     <rosparam param="vision_target_offset" subst_value="true">[$(arg vision_target_offset_x), $(arg vision_target_offset_y), $(arg vision_target_offset_z)]</rosparam>
     <param name="move_group_wait_for_servers" value="45.0"/>
@@ -236,13 +250,13 @@
     <param name="vision_pregrasp_max_segments" value="2"/>
     <!-- 预接近 z：仅略高于质心即可；过大则肩肘先大幅上抬（如图）。可与 vision_tcp_extra_z_m 叠加 -->
     <!-- 略抬高预接近、减弱末段下探：减轻 TCP 顶台面、effort 抖动 -->
-    <rosparam param="vision_pregrasp_delta">[0.0, 0.0, 0.050]</rosparam>
+    <rosparam param="vision_pregrasp_delta">[0.0, 0.0, 0.045]</rosparam>
     <!-- 末段相对质心下探；略加大可提高指尖压在块上的概率（台面碰撞则略减小） -->
-    <rosparam param="vision_grasp_delta">[0.0, 0.0, -0.033]</rosparam>
+    <rosparam param="vision_grasp_delta">[0.0, 0.0, -0.052]</rosparam>
     <!-- 指尖相对 TCP 的抬高余量；默认 0.055 与 pregrasp 叠加大→预接近过高 -->
-    <param name="vision_tcp_extra_z_m" value="0.028"/>
+    <param name="vision_tcp_extra_z_m" value="0.022"/>
     <!-- 仅下落点额外 z（负=再下探），与 grasp_delta 叠加 -->
-    <param name="vision_grasp_plunge_extra_z_m" value="-0.012"/>
+    <param name="vision_grasp_plunge_extra_z_m" value="-0.018"/>
     <!-- 主链成功后、闭合前：采深度短步修正（建议保持开启） -->
     <param name="grasp_fin_refine_enable" value="true"/>
     <!-- 最多微调轮数：过多会延迟闭爪；早停达标后实际不会跑满 -->

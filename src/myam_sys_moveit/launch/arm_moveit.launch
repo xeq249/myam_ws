@@ -37,7 +37,7 @@
     <param name="ground_settle_after_unpause_sec" value="1.5"/>
     <param name="ground_lower_steps" value="14"/>
     <param name="ground_lower_duration_s" value="2.5"/>
-    <!-- 勿在「暂停」阶段长时间发轨迹：物理不步进时 PX4 仍可能无 IMU。置 0，改在解暂停后以 100Hz 维持 10s -->
+    <!-- 勿在「暂停」阶段长时间发轨迹：物理不步进时 PX4 仍可能无 IMU。置 0，解暂停后高频维持，减轻臂下垂经起落架带来的地面偏航 -->
     <param name="pre_unpause_hold_seconds" value="0"/>
     <param name="hold_rate_hz_while_paused" value="100.0"/>
     <param name="hold_point_duration" value="0.05"/>

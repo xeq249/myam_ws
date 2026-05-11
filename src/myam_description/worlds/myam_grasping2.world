@@ -66,14 +66,14 @@
         </visual>
         <sensor name="table_contact_bumper" type="contact">
           <always_on>true</always_on>
-          <update_rate>100</update_rate>
+          <update_rate>30</update_rate>
           <visualize>false</visualize>
           <contact>
             <collision>collision</collision>
           </contact>
           <plugin name="gazebo_ros_table_bumper" filename="libgazebo_ros_bumper.so">
             <alwaysOn>true</alwaysOn>
-            <updateRate>100</updateRate>
+            <updateRate>30</updateRate>
             <bumperTopicName>grasp_table_contact_bumper</bumperTopicName>
             <frameName>table_link</frameName>
           </plugin>
@@ -136,14 +136,14 @@
         </visual>
         <sensor name="ground_cube_bumper" type="contact">
           <always_on>true</always_on>
-          <update_rate>100</update_rate>
+          <update_rate>30</update_rate>
           <visualize>false</visualize>
           <contact>
             <collision>collision</collision>
           </contact>
           <plugin name="gazebo_ros_ground_cube_bumper" filename="libgazebo_ros_bumper.so">
             <alwaysOn>true</alwaysOn>
-            <updateRate>100</updateRate>
+            <updateRate>30</updateRate>
             <bumperTopicName>grasp_ground_cube_contact_bumper</bumperTopicName>
             <frameName>cube_link</frameName>
           </plugin>
@@ -157,7 +157,7 @@
       <ode>
         <solver>
           <type>quick</type>
-          <iters>28</iters>
+          <iters>20</iters>
           <sor>1.3</sor>
         </solver>
         <constraints>
